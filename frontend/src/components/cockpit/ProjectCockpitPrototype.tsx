@@ -23,119 +23,11 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { createFeaturesEditor, type FeaturesEditorContext } from "@/components/wizard/steps/features/editor";
 import type { FeatureScope, WizardFeature, WizardFeatureEdge } from "@/lib/api";
+import type { CockpitFeature, CockpitFeatureStatus } from "@/lib/cockpit-feature-data";
 import { cn } from "@/lib/utils";
 
-type CockpitFeatureStatus = "DONE" | "IN_PROGRESS" | "BLOCKED" | "PLANNED";
-
-interface TestRun {
-  command: string;
-  passed: number;
-  failed: number;
-  updatedAt: string;
-}
-
-interface ReviewItem {
-  id: string;
-  text: string;
-  resolved: boolean;
-}
-
-interface CockpitFeature {
-  id: string;
-  title: string;
-  summary: string;
-  status: CockpitFeatureStatus;
-  owner: string;
-  tests: TestRun;
-  designs: number;
-  handoff: number;
-  updatedAt: string;
-  evidence: string[];
-  reviewItems: ReviewItem[];
-  scopes: FeatureScope[];
-  graphPosition: { x: number; y: number };
-  dependsOn: string[];
-}
-
-const INITIAL_FEATURES: CockpitFeature[] = [
-  {
-    id: "feat-design-workbench",
-    title: "Design Workbench",
-    summary: "Varianten aus Beschreibung und Referenzbild erzeugen, pruefen und als aktives Design uebernehmen.",
-    status: "DONE",
-    owner: "Design Agent",
-    tests: { command: "frontend:e2e design-workbench", passed: 18, failed: 0, updatedAt: "vor 18 min" },
-    designs: 4,
-    handoff: 92,
-    updatedAt: "Heute 18:42",
-    evidence: ["Preview-HTML validiert", "Design summary geschrieben", "Export enthaelt aktive Screens"],
-    scopes: ["FRONTEND", "BACKEND"],
-    graphPosition: { x: 0, y: 0 },
-    dependsOn: [],
-    reviewItems: [
-      { id: "dw-1", text: "Mobile Preview fuer lange Screen-Namen nachpruefen", resolved: false },
-      { id: "dw-2", text: "Leere Bildanalyse im Handoff erwaehnen", resolved: true },
-    ],
-  },
-  {
-    id: "feat-living-sync",
-    title: "Living Sync",
-    summary: "Coding-Agent meldet Feature-Fortschritt und importierte Completion-Snapshots, inklusive Open Points und Warnungen.",
-    status: "IN_PROGRESS",
-    owner: "Codex",
-    tests: { command: "backend:test LivingSync", passed: 11, failed: 1, updatedAt: "vor 7 min" },
-    designs: 1,
-    handoff: 68,
-    updatedAt: "Heute 19:03",
-    evidence: ["FEATURE_DONE_IMPORT wird als Snapshot aggregiert", "Open Points und Warnings landen im Workspace"],
-    scopes: ["BACKEND"],
-    graphPosition: { x: 280, y: 40 },
-    dependsOn: ["feat-design-workbench"],
-    reviewItems: [
-      { id: "ls-1", text: "UI-Smoke-Test fuer Snapshot-only Features nachziehen", resolved: false },
-      { id: "ls-2", text: "Quelle des importierten Done-Markdowns im Panel lesbar halten", resolved: false },
-    ],
-  },
-  {
-    id: "feat-final-review",
-    title: "Finaler Review",
-    summary: "Wizard-Zusammenfassung vor Export pruefen und importierte Done-Snapshots mit fachlichen Restpunkten gegenlesen.",
-    status: "DONE",
-    owner: "Product Owner",
-    tests: { command: "frontend:lint", passed: 42, failed: 0, updatedAt: "gestern" },
-    designs: 2,
-    handoff: 84,
-    updatedAt: "Gestern 16:20",
-    evidence: ["Review-Step abgeschlossen", "Importierte Open Points vor Export sichtbar"],
-    scopes: ["FRONTEND"],
-    graphPosition: { x: 560, y: 0 },
-    dependsOn: ["feat-living-sync"],
-    reviewItems: [
-      { id: "fr-1", text: "Copy fuer Export-Ready-Zustand schaerfen", resolved: false },
-    ],
-  },
-  {
-    id: "feat-cockpit",
-    title: "Projekt-Cockpit",
-    summary: "Nach dem Wizard Features, Completion-Snapshots, offene Punkte und Design-Arbeit in einem fokussierten Cockpit steuern.",
-    status: "PLANNED",
-    owner: "Product Owner",
-    tests: { command: "Noch nicht gelaufen", passed: 0, failed: 0, updatedAt: "geplant" },
-    designs: 0,
-    handoff: 24,
-    updatedAt: "Neu",
-    evidence: ["Shape-Brief freigegeben"],
-    scopes: ["FRONTEND"],
-    graphPosition: { x: 840, y: 70 },
-    dependsOn: ["feat-final-review"],
-    reviewItems: [
-      { id: "pc-1", text: "Informationsarchitektur mit Feature Workbench bestaetigt", resolved: true },
-      { id: "pc-2", text: "Mock-Daten spaeter durch Living-Sync-API ersetzen", resolved: false },
-    ],
-  },
-];
-
 const STATUS_LABEL: Record<CockpitFeatureStatus, string> = {
+  UNKNOWN: "Unknown",
   DONE: "Done",
   IN_PROGRESS: "In Arbeit",
   BLOCKED: "Blockiert",
@@ -143,6 +35,7 @@ const STATUS_LABEL: Record<CockpitFeatureStatus, string> = {
 };
 
 const STATUS_BADGE: Record<CockpitFeatureStatus, "success" | "default" | "destructive" | "ghost"> = {
+  UNKNOWN: "ghost",
   DONE: "success",
   IN_PROGRESS: "default",
   BLOCKED: "destructive",
@@ -151,15 +44,16 @@ const STATUS_BADGE: Record<CockpitFeatureStatus, "success" | "default" | "destru
 
 interface ProjectCockpitPrototypeProps {
   projectId: string;
+  initialFeatures: CockpitFeature[];
 }
 
-export function ProjectCockpitPrototype({ projectId }: ProjectCockpitPrototypeProps) {
-  const [features, setFeatures] = useState(INITIAL_FEATURES);
-  const [activeId, setActiveId] = useState(INITIAL_FEATURES[0].id);
+export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectCockpitPrototypeProps) {
+  const [features, setFeatures] = useState(initialFeatures);
+  const [activeId, setActiveId] = useState(initialFeatures[0]?.id ?? "");
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
-  const activeFeature = features.find((feature) => feature.id === activeId) ?? features[0];
+  const activeFeature = features.find((feature) => feature.id === activeId) ?? features[0] ?? null;
   const stats = useMemo(() => {
     const done = features.filter((feature) => feature.status === "DONE").length;
     const failed = features.reduce((sum, feature) => sum + feature.tests.failed, 0);
@@ -177,7 +71,7 @@ export function ProjectCockpitPrototype({ projectId }: ProjectCockpitPrototypePr
       id,
       title,
       summary: "Neu erfasstes Feature. Als Naechstes Ziel, Akzeptanz und Designbedarf klaeren.",
-      status: "PLANNED",
+      status: "UNKNOWN",
       owner: "Product Owner",
       tests: { command: "Noch nicht gelaufen", passed: 0, failed: 0, updatedAt: "neu" },
       designs: 0,
@@ -197,6 +91,8 @@ export function ProjectCockpitPrototype({ projectId }: ProjectCockpitPrototypePr
   }
 
   function toggleReviewItem(itemId: string) {
+    if (!activeFeature) return;
+
     setFeatures((current) =>
       current.map((feature) =>
         feature.id === activeFeature.id
@@ -212,6 +108,8 @@ export function ProjectCockpitPrototype({ projectId }: ProjectCockpitPrototypePr
   }
 
   function captureDesign() {
+    if (!activeFeature) return;
+
     setFeatures((current) =>
       current.map((feature) =>
         feature.id === activeFeature.id
@@ -238,7 +136,7 @@ export function ProjectCockpitPrototype({ projectId }: ProjectCockpitPrototypePr
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Button size="sm" onClick={captureDesign} className="gap-1.5">
+          <Button size="sm" onClick={captureDesign} disabled={!activeFeature} className="gap-1.5">
             <LayoutTemplate size={14} />
             Design erfassen
           </Button>
@@ -295,7 +193,7 @@ export function ProjectCockpitPrototype({ projectId }: ProjectCockpitPrototypePr
                   onClick={() => setActiveId(feature.id)}
                   className={cn(
                     "w-full rounded-md border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    activeFeature.id === feature.id
+                    activeFeature?.id === feature.id
                       ? "border-primary/35 bg-primary/10"
                       : "border-transparent hover:border-border hover:bg-secondary/50"
                   )}
@@ -319,118 +217,139 @@ export function ProjectCockpitPrototype({ projectId }: ProjectCockpitPrototypePr
                   </div>
                 </button>
               ))}
+              {features.length === 0 && (
+                <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                  Keine Features im Wizard-State gefunden.
+                </div>
+              )}
             </div>
           </div>
         </aside>
 
         <section className="min-h-0 overflow-hidden">
           <div className="min-h-0 overflow-y-auto px-5 py-5">
-            <FeatureHeader feature={activeFeature} />
+            {activeFeature ? (
+              <>
+                <FeatureHeader feature={activeFeature} />
 
-            <CockpitFeatureGraph
-              features={features}
-              activeId={activeFeature.id}
-              onSelectFeature={setActiveId}
-            />
+                <CockpitFeatureGraph
+                  features={features}
+                  activeId={activeFeature.id}
+                  onSelectFeature={setActiveId}
+                />
 
-            <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_20rem]">
-              <section className="rounded-md border border-border bg-card/45">
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <div>
-                    <h2 className="text-sm font-semibold">Snapshot-Review</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">Was ist per Done-Import belastbar, was bleibt fachlich offen?</p>
-                  </div>
-                  <Badge variant={activeFeature.status === "DONE" ? "success" : "ghost"}>
-                    {activeFeature.status === "DONE" ? "Review bereit" : "Review laufend"}
-                  </Badge>
-                </div>
-                <div className="divide-y divide-border/70">
-                  {activeFeature.reviewItems.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => toggleReviewItem(item.id)}
-                      className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span
-                        className={cn(
-                          "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
-                          item.resolved
-                            ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
-                            : "border-amber-400/45 bg-amber-400/10 text-amber-300"
-                        )}
-                      >
-                        {item.resolved ? <Check size={12} /> : <Circle size={10} />}
-                      </span>
-                      <span className={cn("text-sm", item.resolved ? "text-muted-foreground line-through" : "text-foreground")}>
-                        {item.text}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className="rounded-md border border-border bg-card/45 p-4">
-                <div className="flex items-center gap-2">
-                  <GitBranch size={15} className="text-primary" />
-                  <h2 className="text-sm font-semibold">Handoff-Reife</h2>
-                </div>
-                <div className="mt-4">
-                  <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Bereit fuer Agentenarbeit</span>
-                    <span className="font-medium">{activeFeature.handoff}%</span>
-                  </div>
-                  <Progress value={activeFeature.handoff} />
-                </div>
-                <div className="mt-4 space-y-2 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-2"><CheckCircle2 size={13} className="text-emerald-400" /> Spec-Link vorhanden</div>
-                  <div className="flex items-center gap-2"><CheckCircle2 size={13} className="text-emerald-400" /> Tests referenziert</div>
-                  <div className="flex items-center gap-2"><AlertTriangle size={13} className="text-amber-400" /> Offene Review-Punkte klaeren</div>
-                </div>
-              </section>
-            </div>
-
-            <section className="mt-4 rounded-md border border-border bg-card/45">
-              <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                <div>
-                  <h2 className="text-sm font-semibold">Testlaeufe und Evidence</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">Letzte gemeldete Pruefung aus Living Sync oder importiertem Completion-Snapshot.</p>
-                </div>
-                <Button size="xs" variant="ghost" className="gap-1.5">
-                  <RefreshCw size={12} />
-                  Aktualisieren
-                </Button>
-              </div>
-              <div className="grid gap-3 p-4 md:grid-cols-[18rem_minmax(0,1fr)]">
-                <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <TestTube2 size={13} />
-                      {activeFeature.tests.command}
-                    </span>
-                    <TestHealth failed={activeFeature.tests.failed} />
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <TestCount label="Passed" value={activeFeature.tests.passed} ok />
-                    <TestCount label="Failed" value={activeFeature.tests.failed} ok={activeFeature.tests.failed === 0} />
-                  </div>
-                </div>
-                <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                  <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <FileCode2 size={13} />
-                    Evidence
-                  </div>
-                  <div className="space-y-2">
-                    {activeFeature.evidence.map((item) => (
-                      <div key={item} className="flex items-center gap-2 text-sm">
-                        <CheckCircle2 size={14} className="text-emerald-400" />
-                        <span>{item}</span>
+                <div className="mt-5 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_20rem]">
+                  <section className="rounded-md border border-border bg-card/45">
+                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                      <div>
+                        <h2 className="text-sm font-semibold">Snapshot-Review</h2>
+                        <p className="mt-1 text-xs text-muted-foreground">Was ist per Done-Import belastbar, was bleibt fachlich offen?</p>
                       </div>
-                    ))}
+                      <Badge variant={activeFeature.status === "DONE" ? "success" : "ghost"}>
+                        {activeFeature.status === "DONE" ? "Review bereit" : "Review unbekannt"}
+                      </Badge>
+                    </div>
+                    <div className="divide-y divide-border/70">
+                      {activeFeature.reviewItems.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => toggleReviewItem(item.id)}
+                          className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span
+                            className={cn(
+                              "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                              item.resolved
+                                ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                                : "border-amber-400/45 bg-amber-400/10 text-amber-300"
+                            )}
+                          >
+                            {item.resolved ? <Check size={12} /> : <Circle size={10} />}
+                          </span>
+                          <span className={cn("text-sm", item.resolved ? "text-muted-foreground line-through" : "text-foreground")}>
+                            {item.text}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="rounded-md border border-border bg-card/45 p-4">
+                    <div className="flex items-center gap-2">
+                      <GitBranch size={15} className="text-primary" />
+                      <h2 className="text-sm font-semibold">Handoff-Reife</h2>
+                    </div>
+                    <div className="mt-4">
+                      <div className="mb-2 flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Bereit fuer Agentenarbeit</span>
+                        <span className="font-medium">{activeFeature.handoff}%</span>
+                      </div>
+                      <Progress value={activeFeature.handoff} />
+                    </div>
+                    <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2"><AlertTriangle size={13} className="text-amber-400" /> Statusdaten noch nicht angebunden</div>
+                      <div className="flex items-center gap-2"><AlertTriangle size={13} className="text-amber-400" /> Tests noch nicht angebunden</div>
+                      <div className="flex items-center gap-2"><AlertTriangle size={13} className="text-amber-400" /> Offene Review-Punkte klaeren</div>
+                    </div>
+                  </section>
+                </div>
+
+                <section className="mt-4 rounded-md border border-border bg-card/45">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                    <div>
+                      <h2 className="text-sm font-semibold">Testlaeufe und Evidence</h2>
+                      <p className="mt-1 text-xs text-muted-foreground">Letzte gemeldete Pruefung aus Living Sync oder importiertem Completion-Snapshot.</p>
+                    </div>
+                    <Button size="xs" variant="ghost" className="gap-1.5">
+                      <RefreshCw size={12} />
+                      Aktualisieren
+                    </Button>
                   </div>
+                  <div className="grid gap-3 p-4 md:grid-cols-[18rem_minmax(0,1fr)]">
+                    <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <TestTube2 size={13} />
+                          {activeFeature.tests.command}
+                        </span>
+                        <TestHealth failed={activeFeature.tests.failed} />
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <TestCount label="Passed" value={activeFeature.tests.passed} ok />
+                        <TestCount label="Failed" value={activeFeature.tests.failed} ok={activeFeature.tests.failed === 0} />
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                      <div className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <FileCode2 size={13} />
+                        Evidence
+                      </div>
+                      <div className="space-y-2">
+                        {activeFeature.evidence.length === 0 && (
+                          <p className="text-sm text-muted-foreground">Noch keine Evidence angebunden.</p>
+                        )}
+                        {activeFeature.evidence.map((item) => (
+                          <div key={item} className="flex items-center gap-2 text-sm">
+                            <CheckCircle2 size={14} className="text-emerald-400" />
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <div className="flex min-h-[480px] items-center justify-center rounded-md border border-dashed border-border bg-card/35 px-6 text-center">
+                <div>
+                  <h1 className="text-base font-semibold text-foreground">Keine Features im Cockpit</h1>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                    Der Wizard-State enthaelt aktuell keine FEATURES-Eintraege. Sobald Features im Wizard gespeichert sind, erscheinen sie hier in Liste und Graph.
+                  </p>
                 </div>
               </div>
-            </section>
+            )}
           </div>
         </section>
       </main>

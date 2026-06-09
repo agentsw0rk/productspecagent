@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "repobridge-project-context": {
+      "source": "agentsw0rk/repobridge",
+      "sourceType": "github",
+      "skillPath": "skills/repobridge-project-context/SKILL.md",
+      "computedHash": "a0b11a61eb58be65a6b51afb0c68d553d502b13834ea77cdbd070d281267d7a0"
+    }
+  }
+}
