@@ -1,10 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PATHS = ["/", "/login", "/register"];
+const AUTH_PATHS = ["/login", "/register"];
 
 export default function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+  const isAuthPath = AUTH_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
   const hasSession = req.cookies.has("session");
 
   if (!isPublic && !hasSession) {
@@ -13,8 +15,8 @@ export default function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (isPublic && hasSession) {
-    return NextResponse.redirect(new URL("/", req.nextUrl));
+  if (isAuthPath && hasSession) {
+    return NextResponse.redirect(new URL("/projects", req.nextUrl));
   }
 
   return NextResponse.next();

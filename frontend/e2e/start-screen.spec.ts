@@ -22,4 +22,22 @@ test.describe("public start screen", () => {
 
     await expect(page).toHaveURL(/\/login\?next=%2Fprojects$/);
   });
+
+  test("does not redirect authenticated users from the public start page back to itself", async ({ page, context }) => {
+    await context.addCookies([
+      {
+        name: "session",
+        value: "test-session",
+        domain: "localhost",
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.goto("/");
+
+    await expect(page).toHaveURL("/");
+    await expect(page.getByRole("heading", { name: /Product Spec Agent/i })).toBeVisible();
+  });
 });
