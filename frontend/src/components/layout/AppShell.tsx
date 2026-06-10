@@ -110,6 +110,10 @@ function IconRail() {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  if (pathname === "/") {
+    return <>{children}</>;
+  }
+
   const isWorkspace = pathname?.startsWith("/projects/") && pathname !== "/projects/new";
   const isFullBleed =
     isWorkspace ||
