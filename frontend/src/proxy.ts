@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/", "/login", "/register"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/start-screen"];
 const AUTH_PATHS = ["/login", "/register"];
 
 export default function proxy(req: NextRequest) {
