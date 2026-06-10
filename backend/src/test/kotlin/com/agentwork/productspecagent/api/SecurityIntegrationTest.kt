@@ -9,6 +9,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
+import org.springframework.security.test.context.support.WithMockUser
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -137,6 +138,30 @@ class SecurityIntegrationTest : S3TestSupport() {
         val result = mvc.perform(get("/api/v1/projects").cookie(cookie)).andReturn()
         assert(result.response.status != 401) {
             "Expected request through auth gate, got 401"
+        }
+    }
+
+    @Test
+    @WithMockUser
+    fun `configuration endpoints reject authenticated non-admin users`() {
+        listOf(
+            "/api/v1/prompts",
+            "/api/v1/agent-models",
+            "/api/v1/asset-bundles",
+        ).forEach { path ->
+            mvc.perform(get(path)).andExpect(status().isForbidden)
+        }
+    }
+
+    @Test
+    @WithMockUser(roles = ["ADMIN"])
+    fun `configuration endpoints allow admin users`() {
+        listOf(
+            "/api/v1/prompts",
+            "/api/v1/agent-models",
+            "/api/v1/asset-bundles",
+        ).forEach { path ->
+            mvc.perform(get(path)).andExpect(status().isOk)
         }
     }
 }

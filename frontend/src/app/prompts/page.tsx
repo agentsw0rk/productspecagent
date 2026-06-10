@@ -3,15 +3,26 @@ import { useCallback, useEffect, useState } from "react";
 import { listPrompts, type PromptListItem } from "@/lib/api";
 import { PromptList } from "@/components/prompts/PromptList";
 import { PromptDetail } from "@/components/prompts/PromptDetail";
+import { ProtectedAreaDialog } from "@/components/auth/ProtectedAreaDialog";
+import { isProtectedAreaError } from "@/lib/protected-area";
 
 export default function PromptsPage() {
   const [items, setItems] = useState<PromptListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const [protectedArea, setProtectedArea] = useState(false);
 
   useEffect(() => {
-    listPrompts().then(setItems).catch(() => setItems([]));
+    listPrompts()
+      .then((prompts) => {
+        setItems(prompts);
+        setProtectedArea(false);
+      })
+      .catch((error) => {
+        setItems([]);
+        setProtectedArea(isProtectedAreaError(error));
+      });
   }, [reloadTick]);
 
   const handleSelect = useCallback(
@@ -26,6 +37,7 @@ export default function PromptsPage() {
 
   return (
     <div className="h-full flex flex-col">
+      <ProtectedAreaDialog open={protectedArea} />
       <div className="px-8 py-6 border-b">
         <h1 className="text-xl font-semibold">Prompts</h1>
         <p className="text-sm text-muted-foreground mt-1">

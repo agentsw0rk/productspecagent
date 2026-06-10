@@ -16,7 +16,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@WithMockUser
+@WithMockUser(roles = ["ADMIN"])
 class PromptControllerTest {
 
     @Autowired lateinit var mockMvc: MockMvc
@@ -37,7 +37,7 @@ class PromptControllerTest {
     fun `GET prompts returns all items with isOverridden flags`() {
         mockMvc.perform(get("/api/v1/prompts"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.length()").value(10))
+            .andExpect(jsonPath("$.length()").value(promptRegistry.definitions.size))
             .andExpect(jsonPath("$[?(@.id == 'idea-base')]").exists())
             .andExpect(jsonPath("$[?(@.id == 'wizard-blocker-apply-system')]").exists())
             .andExpect(jsonPath("$[?(@.id == 'design-variant-system')]").exists())

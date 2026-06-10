@@ -3,15 +3,26 @@ import { useCallback, useEffect, useState } from "react";
 import { listAgentModels, type AgentModelInfo } from "@/lib/api";
 import { AgentModelList } from "@/components/agent-models/AgentModelList";
 import { AgentModelDetail } from "@/components/agent-models/AgentModelDetail";
+import { ProtectedAreaDialog } from "@/components/auth/ProtectedAreaDialog";
+import { isProtectedAreaError } from "@/lib/protected-area";
 
 export default function AgentModelsPage() {
   const [items, setItems] = useState<AgentModelInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const [protectedArea, setProtectedArea] = useState(false);
 
   useEffect(() => {
-    listAgentModels().then(setItems).catch(() => setItems([]));
+    listAgentModels()
+      .then((models) => {
+        setItems(models);
+        setProtectedArea(false);
+      })
+      .catch((error) => {
+        setItems([]);
+        setProtectedArea(isProtectedAreaError(error));
+      });
   }, [reloadTick]);
 
   const handleSelect = useCallback(
@@ -26,6 +37,7 @@ export default function AgentModelsPage() {
 
   return (
     <div className="h-full flex flex-col">
+      <ProtectedAreaDialog open={protectedArea} />
       <div className="px-8 py-6 border-b">
         <h1 className="text-xl font-semibold">Agent-Modelle</h1>
         <p className="text-sm text-muted-foreground mt-1">

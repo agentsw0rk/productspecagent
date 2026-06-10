@@ -8,6 +8,7 @@ import {
   deleteAssetBundleById,
   fetchAssetBundleFile,
   fetchAssetBundleFileById,
+  ApiError,
   type AssetBundleListItem,
   type AssetBundleDetail,
   type StepType,
@@ -35,6 +36,7 @@ interface AssetBundleState {
   loading: boolean;
   uploading: boolean;
   error: string | null;
+  errorStatus: number | null;
   filterStep: StepType | "GLOBAL" | "ALL";
 
   load: () => Promise<void>;
@@ -63,15 +65,20 @@ export const useAssetBundleStore = create<AssetBundleState>((set, get) => ({
   loading: false,
   uploading: false,
   error: null,
+  errorStatus: null,
   filterStep: "ALL",
 
   async load() {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, errorStatus: null });
     try {
       const bundles = await listAssetBundles();
-      set({ bundles, loading: false });
+      set({ bundles, loading: false, errorStatus: null });
     } catch (e) {
-      set({ error: (e as Error).message, loading: false });
+      set({
+        error: (e as Error).message,
+        errorStatus: e instanceof ApiError ? e.status : null,
+        loading: false,
+      });
     }
   },
 
@@ -171,7 +178,7 @@ export const useAssetBundleStore = create<AssetBundleState>((set, get) => ({
   },
 
   clearError() {
-    set({ error: null });
+    set({ error: null, errorStatus: null });
   },
 
   // Coverage-View

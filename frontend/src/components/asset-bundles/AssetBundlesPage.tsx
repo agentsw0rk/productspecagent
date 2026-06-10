@@ -9,6 +9,7 @@ import { BundleDetail } from "./BundleDetail";
 import { MissingBundleList } from "./MissingBundleList";
 import { ManifestStubView } from "./ManifestStubView";
 import { cn } from "@/lib/utils";
+import { ProtectedAreaDialog } from "@/components/auth/ProtectedAreaDialog";
 
 export function AssetBundlesPage() {
   const load = useAssetBundleStore((s) => s.load);
@@ -19,6 +20,7 @@ export function AssetBundlesPage() {
   const catalog = useWizardOptionsStore((s) => s.catalog);
   const catalogLoading = useWizardOptionsStore((s) => s.loading);
   const loadCatalog = useWizardOptionsStore((s) => s.loadCatalog);
+  const errorStatus = useAssetBundleStore((s) => s.errorStatus);
 
   useEffect(() => {
     load();
@@ -31,9 +33,11 @@ export function AssetBundlesPage() {
   }, [catalog, catalogLoading, loadCatalog]);
 
   const missingCount = getMissingTriples(catalog).length;
+  const protectedArea = errorStatus === 401 || errorStatus === 403;
 
   return (
     <div className="flex h-screen flex-col">
+      <ProtectedAreaDialog open={protectedArea} />
       <header className="border-b px-6 py-4">
         <h1 className="text-xl font-semibold">Asset Bundles</h1>
         <p className="text-sm text-muted-foreground">
