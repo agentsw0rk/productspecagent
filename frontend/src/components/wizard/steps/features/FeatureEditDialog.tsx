@@ -21,9 +21,10 @@ interface FeatureEditDialogProps {
   allowedScopes: FeatureScope[];
   open: boolean;
   projectId: string;
+  mode?: "edit" | "create";
   onClose: () => void;
-  onSave: (patch: Partial<WizardFeature>) => void;
-  onDelete: () => void;
+  onSave: (patch: Partial<WizardFeature>) => void | Promise<void>;
+  onDelete?: () => void;
 }
 
 type DraftFeature = Pick<WizardFeature,
@@ -67,6 +68,7 @@ interface AcceptanceCriteriaListProps {
   value: AcceptanceCriterion[];
   onChange: (next: AcceptanceCriterion[]) => void;
   onPropose: () => void;
+  canPropose: boolean;
   isProposing: boolean;
   proposeError: string | null;
   expanded: boolean;
@@ -77,6 +79,7 @@ function AcceptanceCriteriaList({
   value,
   onChange,
   onPropose,
+  canPropose,
   isProposing,
   proposeError,
   expanded,
@@ -136,21 +139,23 @@ function AcceptanceCriteriaList({
           </p>
         </div>
         <div className="flex items-center gap-2 sm:pl-4">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onPropose}
-            disabled={isProposing || !expanded}
-            className="border-primary/40 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
-          >
-            {isProposing ? (
-              <Loader2 className="mr-1 animate-spin" size={14} />
-            ) : (
-              <Sparkles className="mr-1" size={14} />
-            )}
-            {isProposing ? "Generiere..." : "Vorschlagen"}
-          </Button>
+          {canPropose && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onPropose}
+              disabled={isProposing || !expanded}
+              className="border-primary/40 bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
+            >
+              {isProposing ? (
+                <Loader2 className="mr-1 animate-spin" size={14} />
+              ) : (
+                <Sparkles className="mr-1" size={14} />
+              )}
+              {isProposing ? "Generiere..." : "Vorschlagen"}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -275,12 +280,15 @@ export function FeatureEditDialog({
   allowedScopes,
   open,
   projectId,
+  mode = "edit",
   onClose,
   onSave,
   onDelete,
 }: FeatureEditDialogProps) {
   const initialRef = useRef<DraftFeature | null>(null);
   const [draft, setDraft] = useState<DraftFeature | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && feature) {
@@ -291,6 +299,8 @@ export function FeatureEditDialog({
     if (!open) {
       initialRef.current = null;
       setDraft(null);
+      setSaveError(null);
+      setIsSaving(false);
     }
   }, [open, feature]);
 
@@ -370,22 +380,31 @@ export function FeatureEditDialog({
     onClose();
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!draft) return;
     const cleanedAC = draft.acceptanceCriteria
       .map((c) => ({ ...c, text: c.text.trim() }))
       .filter((c) => c.text.length > 0);
-    onSave({
-      title: draft.title,
-      description: draft.description,
-      scopes: draft.scopes,
-      scopeFields: draft.scopeFields,
-      acceptanceCriteria: cleanedAC,
-    });
-    onClose();
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onSave({
+        title: draft.title,
+        description: draft.description,
+        scopes: draft.scopes,
+        scopeFields: draft.scopeFields,
+        acceptanceCriteria: cleanedAC,
+      });
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Speichern fehlgeschlagen");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function handleDelete() {
+    if (!onDelete) return;
     if (!window.confirm("Feature wirklich löschen?")) return;
     onDelete();
   }
@@ -396,7 +415,7 @@ export function FeatureEditDialog({
         <DialogHeader className="border-b px-6 py-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="space-y-1">
-              <DialogTitle className="text-lg">Feature bearbeiten</DialogTitle>
+              <DialogTitle className="text-lg">{mode === "create" ? "Feature erfassen" : "Feature bearbeiten"}</DialogTitle>
               <DialogDescription>
                 {draft.title.trim() || "Unbenanntes Feature"}
               </DialogDescription>
@@ -483,6 +502,7 @@ export function FeatureEditDialog({
               value={draft.acceptanceCriteria}
               onChange={(next) => patch("acceptanceCriteria", next)}
               onPropose={handlePropose}
+              canPropose={mode === "edit"}
               isProposing={isProposing}
               proposeError={proposeError}
               expanded={acceptanceCriteriaExpanded}
@@ -554,9 +574,9 @@ export function FeatureEditDialog({
             <section className="rounded-xl border bg-muted/20 p-4 sm:p-5">
               <h3 className="text-sm font-semibold">Hinweise</h3>
               <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <li>AI-Vorschläge werden an die bestehende AC-Liste angehängt.</li>
+                {mode === "edit" && <li>AI-Vorschläge werden an die bestehende AC-Liste angehängt.</li>}
                 <li>Leere Akzeptanzkriterien werden beim Speichern automatisch entfernt.</li>
-                <li>Löschen entfernt das Feature inklusive seiner Abhängigkeiten aus dem Graphen.</li>
+                {onDelete && <li>Löschen entfernt das Feature inklusive seiner Abhängigkeiten aus dem Graphen.</li>}
               </ul>
             </section>
           </div>
@@ -564,21 +584,31 @@ export function FeatureEditDialog({
 
         <div className="flex flex-col gap-4 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <Button type="button" variant="ghost" onClick={handleDelete}>
-              <Trash2 size={14} className="mr-1" /> Feature löschen
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Nutze Löschen nur, wenn das Feature wirklich komplett aus dem Graphen entfernt werden soll.
-            </p>
+            {onDelete ? (
+              <>
+                <Button type="button" variant="ghost" onClick={handleDelete}>
+                  <Trash2 size={14} className="mr-1" /> Feature löschen
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Nutze Löschen nur, wenn das Feature wirklich komplett aus dem Graphen entfernt werden soll.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Speichern legt das Feature im Wizard-State an.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 sm:items-end">
             <p className="text-xs text-muted-foreground">
-              {isDirty ? "Es gibt ungespeicherte Änderungen." : "Keine ungespeicherten Änderungen."}
+              {saveError ?? (isDirty ? "Es gibt ungespeicherte Änderungen." : "Keine ungespeicherten Änderungen.")}
             </p>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={handleClose}>Abbrechen</Button>
-              <Button type="button" onClick={handleSave}>Speichern</Button>
+              <Button type="button" variant="outline" onClick={handleClose} disabled={isSaving}>Abbrechen</Button>
+              <Button type="button" onClick={handleSave} disabled={isSaving}>
+                {isSaving ? "Speichere..." : "Speichern"}
+              </Button>
             </div>
           </div>
         </div>

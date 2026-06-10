@@ -19,11 +19,12 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { createFeaturesEditor, type FeaturesEditorContext } from "@/components/wizard/steps/features/editor";
+import { FeatureEditDialog } from "@/components/wizard/steps/features/FeatureEditDialog";
 import type { FeatureScope, WizardFeature, WizardFeatureEdge } from "@/lib/api";
 import type { CockpitFeature, CockpitFeatureStatus } from "@/lib/cockpit-feature-data";
+import { createDefaultWizardFeature } from "@/lib/cockpit-feature-data";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABEL: Record<CockpitFeatureStatus, string> = {
@@ -45,13 +46,19 @@ const STATUS_BADGE: Record<CockpitFeatureStatus, "success" | "default" | "destru
 interface ProjectCockpitPrototypeProps {
   projectId: string;
   initialFeatures: CockpitFeature[];
+  allowedScopes: FeatureScope[];
+  onCreateFeature: (feature: WizardFeature) => Promise<CockpitFeature[]>;
 }
 
-export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectCockpitPrototypeProps) {
+export function ProjectCockpitPrototype({
+  projectId,
+  initialFeatures,
+  allowedScopes,
+  onCreateFeature,
+}: ProjectCockpitPrototypeProps) {
   const [features, setFeatures] = useState(initialFeatures);
   const [activeId, setActiveId] = useState(initialFeatures[0]?.id ?? "");
-  const [adding, setAdding] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
+  const [createDraft, setCreateDraft] = useState<WizardFeature | null>(null);
 
   const activeFeature = features.find((feature) => feature.id === activeId) ?? features[0] ?? null;
   const stats = useMemo(() => {
@@ -62,32 +69,21 @@ export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectC
     return { done, failed, open, designs };
   }, [features]);
 
-  function addFeature() {
-    const title = newTitle.trim();
-    if (!title) return;
+  function openCreateDialog() {
+    setCreateDraft(createDefaultWizardFeature(allowedScopes, { x: 0, y: Math.max(160, features.length * 140) }));
+  }
 
-    const id = `feature-${Date.now()}`;
-    const nextFeature: CockpitFeature = {
-      id,
-      title,
-      summary: "Neu erfasstes Feature. Als Naechstes Ziel, Akzeptanz und Designbedarf klaeren.",
-      status: "UNKNOWN",
-      owner: "Product Owner",
-      tests: { command: "Noch nicht gelaufen", passed: 0, failed: 0, updatedAt: "neu" },
-      designs: 0,
-      handoff: 12,
-      updatedAt: "Gerade eben",
-      evidence: ["Feature im Cockpit erfasst"],
-      scopes: ["FRONTEND"],
-      graphPosition: { x: 0, y: Math.max(160, features.length * 140) },
-      dependsOn: [],
-      reviewItems: [{ id: `${id}-review`, text: "Ziel und Done-Kriterien klaeren", resolved: false }],
+  async function saveCreatedFeature(patch: Partial<WizardFeature>) {
+    if (!createDraft) return;
+
+    const feature: WizardFeature = {
+      ...createDraft,
+      ...patch,
     };
+    const nextFeatures = await onCreateFeature(feature);
 
-    setFeatures((current) => [nextFeature, ...current]);
-    setActiveId(id);
-    setNewTitle("");
-    setAdding(false);
+    setFeatures(nextFeatures);
+    setActiveId(feature.id);
   }
 
   function toggleReviewItem(itemId: string) {
@@ -120,7 +116,7 @@ export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectC
   }
 
   return (
-    <div className="flex h-full min-h-screen flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-5">
         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
           <Link
@@ -140,7 +136,7 @@ export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectC
             <LayoutTemplate size={14} />
             Design erfassen
           </Button>
-          <Button size="sm" onClick={() => setAdding(true)} className="gap-1.5">
+          <Button size="sm" onClick={openCreateDialog} className="gap-1.5">
             <Plus size={14} />
             Feature erfassen
           </Button>
@@ -157,28 +153,6 @@ export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectC
               <Metric value={stats.designs.toString()} label="Designs" tone="primary" />
             </div>
           </div>
-
-          {adding && (
-            <div className="border-b border-border bg-card/45 p-3">
-              <label htmlFor="feature-title" className="mb-2 block text-xs font-medium text-muted-foreground">
-                Neues Feature
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  id="feature-title"
-                  value={newTitle}
-                  onChange={(event) => setNewTitle(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") addFeature();
-                    if (event.key === "Escape") setAdding(false);
-                  }}
-                  placeholder="Feature-Titel"
-                  autoFocus
-                />
-                <Button size="sm" onClick={addFeature}>Hinzufuegen</Button>
-              </div>
-            </div>
-          )}
 
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             <div className="mb-2 flex items-center justify-between px-2">
@@ -226,8 +200,8 @@ export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectC
           </div>
         </aside>
 
-        <section className="min-h-0 overflow-hidden">
-          <div className="min-h-0 overflow-y-auto px-5 py-5">
+        <section className="flex min-h-0 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
             {activeFeature ? (
               <>
                 <FeatureHeader feature={activeFeature} />
@@ -353,6 +327,16 @@ export function ProjectCockpitPrototype({ projectId, initialFeatures }: ProjectC
           </div>
         </section>
       </main>
+
+      <FeatureEditDialog
+        mode="create"
+        feature={createDraft}
+        allowedScopes={allowedScopes}
+        open={createDraft !== null}
+        projectId={projectId}
+        onClose={() => setCreateDraft(null)}
+        onSave={saveCreatedFeature}
+      />
     </div>
   );
 }

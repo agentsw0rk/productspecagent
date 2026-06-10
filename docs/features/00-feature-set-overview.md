@@ -61,6 +61,7 @@ Jedes Feature ist eine eigenständige, implementierbare Einheit. Die Reihenfolge
 | 51 | Feature-Done-Markdown Import via MCP | [51-feature-done-markdown-import-via-mcp.md](51-feature-done-markdown-import-via-mcp.md) | Feature 22, 45, 50 | M |
 | 52 | Cockpit Launch Gate nach Wizard-Abschluss | [52-cockpit-launch-gate-after-wizard.md](52-cockpit-launch-gate-after-wizard.md) | Feature 11, 12, 13, 48, 50 | S–M |
 | 53 | Cockpit Feature-Daten aus S3 | [53-cockpit-feature-data-from-s3.md](53-cockpit-feature-data-from-s3.md) | Feature 22, 31, 50, 52 | S |
+| 54 | Cockpit Feature-Erfassung mit Wizard-Modal | [54-cockpit-feature-create-with-wizard-modal.md](54-cockpit-feature-create-with-wizard-modal.md) | Feature 22, 36, 44, 50, 53 | S–M |
 
 ## Architecture Docs
 

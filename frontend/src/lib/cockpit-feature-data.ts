@@ -1,4 +1,4 @@
-import type { FeatureScope, GraphPosition, WizardData, WizardFeature, WizardFeatureEdge } from "@/lib/api";
+import type { FeatureScope, GraphPosition, WizardData, WizardFeature, WizardFeatureEdge, WizardStepData } from "@/lib/api";
 
 export type CockpitFeatureStatus = "UNKNOWN" | "DONE" | "IN_PROGRESS" | "BLOCKED" | "PLANNED";
 
@@ -70,4 +70,44 @@ export function toCockpitFeatures(wizardData: WizardData): CockpitFeature[] {
     graphPosition: feature.position,
     dependsOn: incomingByTarget[feature.id] ?? [],
   }));
+}
+
+export function wizardFeaturesFromData(wizardData: WizardData): WizardFeature[] {
+  const fields = wizardData.steps.FEATURES?.fields ?? {};
+  return Array.isArray(fields.features) ? (fields.features as WizardFeature[]) : [];
+}
+
+export function wizardEdgesFromData(wizardData: WizardData): WizardFeatureEdge[] {
+  const fields = wizardData.steps.FEATURES?.fields ?? {};
+  return Array.isArray(fields.edges) ? (fields.edges as WizardFeatureEdge[]) : [];
+}
+
+export function createDefaultWizardFeature(
+  allowedScopes: FeatureScope[],
+  position: GraphPosition,
+): WizardFeature {
+  return {
+    id: crypto.randomUUID(),
+    title: "Neues Feature",
+    description: "",
+    scopes: allowedScopes.slice(0, 1),
+    scopeFields: {},
+    acceptanceCriteria: [],
+    position,
+  };
+}
+
+export function appendWizardFeature(wizardData: WizardData, feature: WizardFeature): WizardStepData {
+  const features = wizardFeaturesFromData(wizardData);
+  const edges = wizardEdgesFromData(wizardData);
+  const existingStep = wizardData.steps.FEATURES;
+
+  return {
+    completedAt: existingStep?.completedAt ?? null,
+    fields: {
+      ...(existingStep?.fields ?? {}),
+      features: [...features, feature],
+      edges,
+    },
+  };
 }
