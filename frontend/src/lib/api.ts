@@ -34,20 +34,25 @@ function apiErrorMessage(body: unknown): string | null {
   return null;
 }
 
+interface ApiFetchOptions extends RequestInit {
+  suppressUnauthorizedHandler?: boolean;
+}
+
 export async function apiFetch<T>(
   path: string,
-  options?: RequestInit
+  options?: ApiFetchOptions
 ): Promise<T> {
+  const { suppressUnauthorizedHandler = false, ...requestOptions } = options ?? {};
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...options?.headers,
+      ...requestOptions.headers,
     },
-    ...options,
+    ...requestOptions,
   });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !suppressUnauthorizedHandler) {
     onUnauthorized?.();
   }
 
@@ -1172,5 +1177,5 @@ export async function authLogout(): Promise<void> {
 }
 
 export async function authMe(): Promise<AuthMe> {
-  return apiFetch<AuthMe>("/api/v1/auth/me");
+  return apiFetch<AuthMe>("/api/v1/auth/me", { suppressUnauthorizedHandler: true });
 }
