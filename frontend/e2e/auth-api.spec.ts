@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { apiFetch, authMe, setUnauthorizedHandler } from "@/lib/api";
+import { redirectAfterAuth } from "@/lib/auth-navigation";
 
 test.describe("auth API unauthorized handling", () => {
   const originalFetch = globalThis.fetch;
@@ -31,5 +32,15 @@ test.describe("auth API unauthorized handling", () => {
     await expect(apiFetch("/api/v1/projects")).rejects.toThrow("API error: 401");
 
     expect(unauthorizedRedirects).toBe(1);
+  });
+
+  test("auth redirects use a full document navigation", () => {
+    const redirects: string[] = [];
+
+    redirectAfterAuth("/projects", {
+      replace: (url) => redirects.push(url),
+    });
+
+    expect(redirects).toEqual(["/projects"]);
   });
 });

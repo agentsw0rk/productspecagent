@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { redirectAfterAuth } from "@/lib/auth-navigation";
 import { ApiError } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 export function RegisterForm() {
-  const router = useRouter();
   const register = useAuthStore((s) => s.register);
 
   const [email, setEmail] = useState("");
@@ -24,7 +23,7 @@ export function RegisterForm() {
     setSubmitting(true);
     try {
       await register(email, password);
-      router.replace("/projects");
+      redirectAfterAuth("/projects");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setError("Email bereits registriert");

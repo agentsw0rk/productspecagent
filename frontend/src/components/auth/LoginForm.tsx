@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { redirectAfterAuth } from "@/lib/auth-navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 export function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const login = useAuthStore((s) => s.login);
 
@@ -24,7 +24,7 @@ export function LoginForm() {
     setSubmitting(true);
     try {
       await login(email, password);
-      router.replace(params.get("next") ?? "/projects");
+      redirectAfterAuth(params.get("next") ?? "/projects");
     } catch {
       setError("Login fehlgeschlagen");
     } finally {
