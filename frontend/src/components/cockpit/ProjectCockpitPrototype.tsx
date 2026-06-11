@@ -262,9 +262,30 @@ export function ProjectCockpitPrototype({
                       <Progress value={activeFeature.handoff} />
                     </div>
                     <div className="mt-4 space-y-2 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-2"><AlertTriangle size={13} className="text-amber-400" /> Statusdaten noch nicht angebunden</div>
-                      <div className="flex items-center gap-2"><AlertTriangle size={13} className="text-amber-400" /> Tests noch nicht angebunden</div>
-                      <div className="flex items-center gap-2"><AlertTriangle size={13} className="text-amber-400" /> Offene Review-Punkte klaeren</div>
+                      <div className="flex items-center gap-2">
+                        {activeFeature.status === "UNKNOWN" ? (
+                          <AlertTriangle size={13} className="text-amber-400" />
+                        ) : (
+                          <CheckCircle2 size={13} className="text-emerald-400" />
+                        )}
+                        {activeFeature.status === "UNKNOWN" ? "Noch kein Reporter-Status" : "Reporter-Status vorhanden"}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {activeFeature.tests.command === "Noch nicht angebunden" ? (
+                          <AlertTriangle size={13} className="text-amber-400" />
+                        ) : (
+                          <CheckCircle2 size={13} className="text-emerald-400" />
+                        )}
+                        {activeFeature.tests.command === "Noch nicht angebunden" ? "Noch kein gemeldeter Testlauf" : "Testlauf gemeldet"}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {activeFeature.reviewItems.some((item) => !item.resolved) ? (
+                          <AlertTriangle size={13} className="text-amber-400" />
+                        ) : (
+                          <CheckCircle2 size={13} className="text-emerald-400" />
+                        )}
+                        {activeFeature.reviewItems.some((item) => !item.resolved) ? "Offene Review-Punkte klaeren" : "Keine offenen Review-Punkte"}
+                      </div>
                     </div>
                   </section>
                 </div>
@@ -301,7 +322,7 @@ export function ProjectCockpitPrototype({
                       </div>
                       <div className="space-y-2">
                         {activeFeature.evidence.length === 0 && (
-                          <p className="text-sm text-muted-foreground">Noch keine Evidence angebunden.</p>
+                          <p className="text-sm text-muted-foreground">Noch keine Reporter-Evidence vorhanden.</p>
                         )}
                         {activeFeature.evidence.map((item) => (
                           <div key={item} className="flex items-center gap-2 text-sm">
