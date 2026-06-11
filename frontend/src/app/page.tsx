@@ -111,6 +111,45 @@ const capabilities = [
   },
 ];
 
+const differentiators = [
+  {
+    eyebrow: "USP 01",
+    title: "Wizard mit Entscheidungs-Agent",
+    description:
+      "OpenSpec, BMAD, Zenflow und Spec Kit strukturieren Specs vor allem als Artefakte. ProductSpecAgent macht die klaerende Arbeit im Wizard sichtbar: Rueckfragen, Pro/Contra-Optionen, Empfehlungen und begruendete Entscheidungen bleiben im Flow.",
+    icon: BrainCircuit,
+    points: [
+      "Gezielte Rueckfragen bei Luecken und Widerspruechen",
+      "Entscheidungen mit Optionen, Empfehlung und Rationale",
+      "Kontext von Idee, Problem, Features, Architektur und Review",
+    ],
+  },
+  {
+    eyebrow: "USP 02",
+    title: "Living Sync fuer Umsetzung und Wirkung",
+    description:
+      "Der Flow endet nicht beim Handoff. Coding Agents koennen Fortschritt, Tests, Blocker, Codeaenderungen und Tokenverbrauch zurueckmelden, damit Produktentscheidungen und reale Umsetzung zusammen sichtbar bleiben.",
+    icon: LayoutDashboard,
+    points: [
+      "MCP-Rueckkanal aus Coding-Agent-Workflows",
+      "Feature-Fortschritt, Testlaeufe und Abweichungen im Projektkontext",
+      "Feedback-Schleifen fuer bessere Produkt- und Scope-Entscheidungen",
+    ],
+  },
+  {
+    eyebrow: "USP 03",
+    title: "Asset Bundles fuer jeden Entwicklungsschritt",
+    description:
+      "Specs werden nicht nur beschrieben, sondern mit passenden Arbeitsmitteln verbunden. Asset Bundles liefern kuratierte Skills, Commands und Agents fuer gewaehlte Architektur-, Backend- und Frontend-Entscheidungen.",
+    icon: FileArchive,
+    points: [
+      "Bundle-Zuordnung nach Wizard-Wahl und Technologie",
+      "Wiederverwendbare Vorgaben fuer Security, Tests und Team-Standards",
+      "Agenten-Handoff mit konkreten Assets statt leerem Projektkontext",
+    ],
+  },
+];
+
 export default function Home() {
   const router = useRouter();
 
@@ -218,6 +257,49 @@ export default function Home() {
                   AI-Agent erkennt offene Entscheidungen und Rueckfragen direkt im Wizard-Kontext.
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-border bg-card/35">
+        <div className="mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 lg:px-10">
+          <div className="grid gap-8 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <div>
+              <p className="text-sm font-medium text-primary">Differenzierung</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-normal sm:text-4xl">
+                Was ProductSpecAgent gegenueber klassischen SDD-Tools auszeichnet.
+              </h2>
+              <p className="mt-4 text-base leading-7 text-muted-foreground">
+                Andere Workflows erzeugen Specs, Plaene und Tasks. ProductSpecAgent verbindet den Produkt-Wizard
+                mit Entscheidungsarbeit, laufender Umsetzungssicht und kuratierten Agent-Artefakten.
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              {differentiators.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <article key={item.title} className="flex min-h-full flex-col rounded-lg border border-border bg-background p-5 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-normal text-primary">{item.eyebrow}</span>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <Icon size={18} />
+                      </div>
+                    </div>
+                    <h3 className="mt-5 text-lg font-semibold leading-6">{item.title}</h3>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.description}</p>
+                    <div className="mt-5 space-y-3">
+                      {item.points.map((point) => (
+                        <div key={point} className="flex items-start gap-2 text-sm leading-6">
+                          <CheckCircle2 size={16} className="mt-1 shrink-0 text-emerald-400" />
+                          <span>{point}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </div>

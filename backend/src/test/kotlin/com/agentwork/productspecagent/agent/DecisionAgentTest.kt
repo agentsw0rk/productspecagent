@@ -53,6 +53,45 @@ class DecisionAgentTest {
     }
 
     @Test
+    fun `generateDecision parses option JSON without recommendation`() = runBlocking {
+        val project = projectService.createProject("Test")
+        val agent = createFakeAgent("""
+            {"options":[
+                {"label":"Kleine SaaS-Teams","pros":["Klarer Bedarf an gemeinsamer Aufgabenkoordination"],"cons":["Erwarten oft Integrationen"],"recommended":true},
+                {"label":"Freelancer","pros":["Einfachster Start"],"cons":["Geringere Zahlungsbereitschaft"],"recommended":false}
+            ]}
+        """.trimIndent())
+
+        val decision = agent.generateDecision(project.project.id, "Primaere Zielgruppe?", FlowStepType.PROBLEM)
+
+        assertEquals("Primaere Zielgruppe?", decision.title)
+        assertEquals(2, decision.options.size)
+        assertEquals("Kleine SaaS-Teams", decision.options[0].label)
+        assertTrue(decision.options[0].recommended)
+        assertContains(decision.recommendation, "Kleine SaaS-Teams")
+        assertFalse(decision.recommendation.trim().startsWith("{"), "Recommendation must not render raw JSON")
+    }
+
+    @Test
+    fun `generateDecision defaults first option when recommendation markers are missing`() = runBlocking {
+        val project = projectService.createProject("Test")
+        val agent = createFakeAgent("""
+            {"options":[
+                {"label":"Kleine SaaS-Teams","pros":["Klarer Bedarf an gemeinsamer Aufgabenkoordination"],"cons":["Erwarten oft Integrationen"]},
+                {"label":"Freelancer","pros":["Einfachster Start"],"cons":["Geringere Zahlungsbereitschaft"]}
+            ]}
+        """.trimIndent())
+
+        val decision = agent.generateDecision(project.project.id, "Primaere Zielgruppe?", FlowStepType.PROBLEM)
+
+        assertEquals(2, decision.options.size)
+        assertTrue(decision.options[0].recommended)
+        assertFalse(decision.options[1].recommended)
+        assertContains(decision.recommendation, "Kleine SaaS-Teams")
+        assertFalse(decision.recommendation.trim().startsWith("{"), "Recommendation must not render raw JSON")
+    }
+
+    @Test
     fun `generateDecision handles malformed JSON gracefully`() = runBlocking {
         val project = projectService.createProject("Test")
         val agent = createFakeAgent("This is not JSON at all")

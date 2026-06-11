@@ -47,15 +47,19 @@ open class DecisionAgent(
             val parsed = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
                 .decodeFromString<DecisionAgentResponse>(jsonStr)
 
+            val recommendedIndex = parsed.options.indexOfFirst { it.recommended }.takeIf { it >= 0 } ?: 0
             val options = parsed.options.mapIndexed { idx, opt ->
                 DecisionOption(
                     id = "opt-${idx + 1}",
                     label = opt.label,
                     pros = opt.pros,
                     cons = opt.cons,
-                    recommended = opt.recommended
+                    recommended = idx == recommendedIndex
                 )
             }
+            val recommendation = parsed.recommendation?.takeIf { it.isNotBlank() }
+                ?: options.getOrNull(recommendedIndex)?.let { "Empfohlen: ${it.label}" }
+                ?: "Keine Empfehlung vom Agenten geliefert."
 
             Decision(
                 id = UUID.randomUUID().toString(),
@@ -63,7 +67,7 @@ open class DecisionAgent(
                 stepType = stepType,
                 title = title,
                 options = options,
-                recommendation = parsed.recommendation,
+                recommendation = recommendation,
                 createdAt = Instant.now().toString()
             )
         } catch (e: Exception) {
@@ -87,7 +91,7 @@ open class DecisionAgent(
 @kotlinx.serialization.Serializable
 private data class DecisionAgentResponse(
     val options: List<AgentOptionResponse>,
-    val recommendation: String
+    val recommendation: String? = null
 )
 
 @kotlinx.serialization.Serializable
@@ -95,5 +99,5 @@ private data class AgentOptionResponse(
     val label: String,
     val pros: List<String>,
     val cons: List<String>,
-    val recommended: Boolean
+    val recommended: Boolean = false
 )

@@ -6,6 +6,9 @@ import type { ClassicScheme, RenderEmit } from "rete-react-plugin";
 const { RefSocket, useConnection } = Presets.classic;
 import type { FeatureScope } from "@/lib/api";
 
+const socketHitboxClass =
+  "group inline-flex h-6 w-6 items-center justify-center rounded-full cursor-crosshair";
+
 export class FeatureRNode extends ClassicPreset.Node {
   width = 220;
   height = 120;
@@ -75,7 +78,7 @@ export function FeatureNodeComponent({ data, emit }: Props) {
             data-testid={`input-${key}`}
           >
             <RefSocket
-              name="input-socket"
+              name={`input-socket ${socketHitboxClass}`}
               side="input"
               socketKey={key}
               nodeId={data.id}
@@ -94,7 +97,7 @@ export function FeatureNodeComponent({ data, emit }: Props) {
             data-testid={`output-${key}`}
           >
             <RefSocket
-              name="output-socket"
+              name={`output-socket ${socketHitboxClass}`}
               side="output"
               socketKey={key}
               nodeId={data.id}
@@ -124,7 +127,7 @@ function Badge({ label, color }: { label: string; color: "cyan" | "violet" | "ne
 export function FeatureSocketComponent() {
   return (
     <div
-      className="h-3.5 w-3.5 rounded-full bg-primary ring-2 ring-background shadow-sm transition-all hover:ring-primary/40 hover:scale-110 cursor-crosshair"
+      className="pointer-events-none h-3.5 w-3.5 rounded-full bg-primary ring-2 ring-background shadow-sm transition-all group-hover:ring-primary/40 group-hover:scale-110"
       data-testid="socket"
     />
   );
