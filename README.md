@@ -1,6 +1,10 @@
 # Product Spec Agent
 
 <p align="center">
+  <img src="logo.png" alt="Product Spec Agent logo" width="160">
+</p>
+
+<p align="center">
   <strong>Turn early product ideas into structured specs, plans, tasks, and agent-ready handoff artifacts.</strong>
 </p>
 
