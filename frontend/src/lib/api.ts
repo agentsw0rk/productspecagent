@@ -685,8 +685,25 @@ export interface FeatureFlags {
   graphmeshEnabled: boolean;
 }
 
+export interface HackathonLockConfig {
+  enabled: boolean;
+  title: string;
+  eventDate: string;
+  targetAt: string;
+  adminBypassEnabled: boolean;
+}
+
+export interface AppFeaturesConfig {
+  graphmeshEnabled: boolean;
+  hackathonLock: HackathonLockConfig;
+}
+
 export async function getFeatures(): Promise<FeatureFlags> {
   return apiFetch<FeatureFlags>("/api/v1/config/features");
+}
+
+export async function getFeaturesConfig(): Promise<AppFeaturesConfig> {
+  return apiFetch<AppFeaturesConfig>("/api/v1/config/features", { suppressUnauthorizedHandler: true });
 }
 
 export async function setProjectGraphMeshEnabled(projectId: string, enabled: boolean): Promise<Project> {
@@ -1156,6 +1173,7 @@ export async function completeDesignWorkbench(projectId: string): Promise<Design
 export interface AuthMe {
   userId: string;
   email: string;
+  admin: boolean;
 }
 
 export async function authRegister(email: string, password: string): Promise<AuthMe> {

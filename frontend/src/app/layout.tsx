@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppShell } from "@/components/layout/AppShell";
 import { AuthProvider } from "@/components/auth/AuthProvider";
+import { HackathonLockProvider } from "@/components/hackathon/HackathonLockProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -30,7 +31,9 @@ export default function RootLayout({
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <HackathonLockProvider>
+            <AppShell>{children}</AppShell>
+          </HackathonLockProvider>
         </AuthProvider>
       </body>
     </html>
