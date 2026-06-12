@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_BASE } from "@/lib/api";
+import { getCountdownParts } from "@/lib/hackathon-countdown";
 
 const featuresUrl = `${API_BASE}/api/v1/config/features`;
 const authMeUrl = `${API_BASE}/api/v1/auth/me`;
@@ -52,5 +53,28 @@ test.describe("hackathon lock", () => {
 
     await expect(page.getByRole("heading", { name: /Product Spec Agent/i })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Hackathon CVDT" })).not.toBeVisible();
+  });
+
+  test("lets guests open login while the lock is active", async ({ page }) => {
+    await page.route(featuresUrl, (route) => route.fulfill({ json: hackathonLockConfig(true) }));
+    await page.route(authMeUrl, (route) => route.fulfill({ status: 401 }));
+
+    await page.goto("/login");
+
+    await expect(page.getByRole("heading", { name: "Anmelden" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hackathon CVDT" })).not.toBeVisible();
+  });
+
+  test("returns a complete zeroed countdown after the target time", () => {
+    expect(getCountdownParts(
+      "2026-06-26T09:00:00+02:00",
+      new Date("2026-06-26T09:00:01+02:00")
+    )).toEqual({
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      complete: true,
+    });
   });
 });

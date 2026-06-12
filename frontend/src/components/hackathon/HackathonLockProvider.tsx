@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { getFeaturesConfig, type AppFeaturesConfig } from "@/lib/api";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { HackathonLockPage } from "@/components/hackathon/HackathonLockPage";
@@ -14,6 +15,8 @@ export function HackathonLockProvider({ children }: { children: React.ReactNode 
   const [state, setState] = useState<ConfigState>({ status: "loading", config: null });
   const user = useAuthStore((s) => s.user);
   const authStatus = useAuthStore((s) => s.status);
+  const pathname = usePathname();
+  const isPublicAuthRoute = pathname === "/login" || pathname === "/register";
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +42,7 @@ export function HackathonLockProvider({ children }: { children: React.ReactNode 
     );
   }
 
-  if (state.status === "open" || !state.config.hackathonLock?.enabled) {
+  if (state.status === "open" || isPublicAuthRoute || !state.config.hackathonLock?.enabled) {
     return <>{children}</>;
   }
 
