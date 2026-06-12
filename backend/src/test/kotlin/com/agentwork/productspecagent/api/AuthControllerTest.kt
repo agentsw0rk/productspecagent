@@ -30,6 +30,7 @@ class AuthControllerTest : S3TestSupport() {
         fun props(registry: DynamicPropertyRegistry) {
             registry.add("auth.jwt.secret") { "0123456789abcdef0123456789abcdef0123456789abcdef" }
             registry.add("auth.cookie.secure") { "false" }
+            registry.add("auth.admin-emails") { "admin@example.com" }
             registry.add("app.storage.bucket") { BUCKET }
             registry.add("app.storage.endpoint") { minio.s3URL }
             registry.add("app.storage.access-key") { minio.userName }
@@ -103,6 +104,17 @@ class AuthControllerTest : S3TestSupport() {
         mvc.perform(get("/api/v1/auth/me").cookie(cookie))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.email").value("me@example.com"))
+    }
+
+    @Test
+    fun `me returns admin true for configured admin email`() {
+        val res = mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body("admin@example.com", "password123")))
+            .andReturn().response
+        val cookie = res.getCookie("session")!!
+        mvc.perform(get("/api/v1/auth/me").cookie(cookie))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.email").value("admin@example.com"))
+            .andExpect(jsonPath("$.admin").value(true))
     }
 
     @Test

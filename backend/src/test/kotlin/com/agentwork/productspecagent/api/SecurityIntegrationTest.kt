@@ -54,6 +54,13 @@ class SecurityIntegrationTest : S3TestSupport() {
     }
 
     @Test
+    fun `features config endpoint is public`() {
+        mvc.perform(get("/api/v1/config/features"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.hackathonLock").exists())
+    }
+
+    @Test
     fun `handoff zip endpoint accessible without auth`() {
         val projectId = projectService.createProject("Public Handoff").project.id
 

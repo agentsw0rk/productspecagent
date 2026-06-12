@@ -29,6 +29,7 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
                 auth
                     .requestMatchers("/api/health").permitAll()
                     .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/logout").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/v1/config/features").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/v1/wizard-options").permitAll()
                     .requestMatchers("/api/v1/admin/wizard-options", "/api/v1/admin/wizard-options/**").hasRole("ADMIN")
                     .requestMatchers("/api/v1/prompts", "/api/v1/prompts/**").hasRole("ADMIN")

@@ -8,4 +8,5 @@ data class AuthCredentials(
 data class AuthMeResponse(
     val userId: String,
     val email: String,
+    val admin: Boolean = false,
 )

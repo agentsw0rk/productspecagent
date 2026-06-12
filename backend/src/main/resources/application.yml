@@ -24,6 +24,14 @@ auth:
     secure: ${AUTH_COOKIE_SECURE:true}
     domain: ${AUTH_COOKIE_DOMAIN:.hackathon.netrtl.com}
 
+hackathon:
+  lock:
+    enabled: ${HACKATHON_LOCK_ENABLED:false}
+    title: ${HACKATHON_LOCK_TITLE:Hackathon CVDT}
+    event-date: ${HACKATHON_LOCK_EVENT_DATE:2026-06-26}
+    target-at: ${HACKATHON_LOCK_TARGET_AT:2026-06-26T09:00:00+02:00}
+    admin-bypass-enabled: ${HACKATHON_LOCK_ADMIN_BYPASS_ENABLED:true}
+
 ai:
   koog:
     openai:
