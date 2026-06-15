@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { authLogin, authLogout, authMe, authRegister, type AuthMe } from "@/lib/api";
+import { clearAuthToken, getAuthToken, setAuthToken } from "@/lib/auth-token";
 
 type AuthStatus = "loading" | "authenticated" | "guest";
 
@@ -19,21 +20,32 @@ export const useAuthStore = create<AuthState>((set) => ({
   status: "loading",
 
   initialize: async () => {
+    const token = getAuthToken();
+    if (!token) {
+      set({ user: null, status: "guest" });
+      return;
+    }
     try {
       const user = await authMe();
+      if (getAuthToken() !== token) return;
       set({ user, status: "authenticated" });
     } catch {
-      set({ user: null, status: "guest" });
+      if (getAuthToken() === token) {
+        clearAuthToken();
+        set({ user: null, status: "guest" });
+      }
     }
   },
 
   login: async (email, password) => {
-    const user = await authLogin(email, password);
+    const { token, ...user } = await authLogin(email, password);
+    setAuthToken(token);
     set({ user, status: "authenticated" });
   },
 
   register: async (email, password) => {
-    const user = await authRegister(email, password);
+    const { token, ...user } = await authRegister(email, password);
+    setAuthToken(token);
     set({ user, status: "authenticated" });
   },
 
@@ -41,9 +53,13 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await authLogout();
     } finally {
+      clearAuthToken();
       set({ user: null, status: "guest" });
     }
   },
 
-  clear: () => set({ user: null, status: "guest" }),
+  clear: () => {
+    clearAuthToken();
+    set({ user: null, status: "guest" });
+  },
 }));

@@ -1,4 +1,5 @@
 import type { Category } from "@/lib/category-step-config";
+import { getAuthToken } from "@/lib/auth-token";
 
 const PRODUCTION_API_BASE = "https://productspecagent-backend.netrtl.com";
 
@@ -9,6 +10,15 @@ let onUnauthorized: (() => void) | null = null;
 
 export function setUnauthorizedHandler(fn: (() => void) | null) {
   onUnauthorized = fn;
+}
+
+function withAuthHeaders(headers?: HeadersInit): HeadersInit {
+  const next = new Headers(headers);
+  const token = getAuthToken();
+  if (token) {
+    next.set("Authorization", `Bearer ${token}`);
+  }
+  return next;
 }
 
 export class ApiError extends Error {
@@ -42,14 +52,14 @@ export async function apiFetch<T>(
   path: string,
   options?: ApiFetchOptions
 ): Promise<T> {
-  const { suppressUnauthorizedHandler = false, ...requestOptions } = options ?? {};
+  const { suppressUnauthorizedHandler = false, headers, ...requestOptions } = options ?? {};
+  const jsonHeaders = new Headers(headers);
+  if (!jsonHeaders.has("Content-Type")) {
+    jsonHeaders.set("Content-Type", "application/json");
+  }
   const res = await fetch(`${API_BASE}${path}`, {
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...requestOptions.headers,
-    },
     ...requestOptions,
+    headers: withAuthHeaders(jsonHeaders),
   });
 
   if (res.status === 401 && !suppressUnauthorizedHandler) {
@@ -437,7 +447,7 @@ export async function getProject(id: string): Promise<ProjectResponse> {
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/v1/projects/${id}`, { method: "DELETE", credentials: "include" });
+  const res = await fetch(`${API_BASE}/api/v1/projects/${id}`, { method: "DELETE", headers: withAuthHeaders() });
   if (res.status === 401) onUnauthorized?.();
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: res.statusText }));
@@ -529,7 +539,7 @@ export async function updateTask(projectId: string, taskId: string, data: Update
 }
 
 export async function deleteTask(projectId: string, taskId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/tasks/${taskId}`, { method: "DELETE", credentials: "include" });
+  const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/tasks/${taskId}`, { method: "DELETE", headers: withAuthHeaders() });
   if (res.status === 401) onUnauthorized?.();
 }
 
@@ -556,8 +566,7 @@ export async function getLivingSyncSummary(projectId: string): Promise<LivingSyn
 export async function exportHandoff(projectId: string, request: HandoffExportRequest = {}): Promise<Blob> {
   const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/handoff/export`, {
     method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(request),
   });
   if (res.status === 401) onUnauthorized?.();
@@ -667,8 +676,7 @@ export async function exportProject(
 ): Promise<Blob> {
   const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/export`, {
     method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: withAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       includeTasks: options.includeTasks ?? true,
       includeDesign: options.includeDesign ?? true,
@@ -762,7 +770,7 @@ export async function uploadDocument(projectId: string, file: File): Promise<Pro
   form.append("file", file);
   const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/documents`, {
     method: "POST",
-    credentials: "include",
+    headers: withAuthHeaders(),
     body: form,
   });
   if (res.status === 401) onUnauthorized?.();
@@ -780,7 +788,7 @@ export async function listDocuments(projectId: string): Promise<ProjectDocument[
 export async function deleteDocument(projectId: string, documentId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/documents/${documentId}`, {
     method: "DELETE",
-    credentials: "include",
+    headers: withAuthHeaders(),
   });
   if (res.status === 401) onUnauthorized?.();
   if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
@@ -853,7 +861,7 @@ export async function uploadAssetBundle(file: File): Promise<AssetBundleUploadRe
   form.append("file", file);
   const res = await fetch(`${API_BASE}/api/v1/asset-bundles`, {
     method: "POST",
-    credentials: "include",
+    headers: withAuthHeaders(),
     body: form,
   });
   if (res.status === 401) onUnauthorized?.();
@@ -870,7 +878,7 @@ export async function deleteAssetBundle(
   value: string,
 ): Promise<void> {
   const path = `/api/v1/asset-bundles/${step}/${field}/${encodeURIComponent(value)}`;
-  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE", credentials: "include" });
+  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE", headers: withAuthHeaders() });
   if (res.status === 401) onUnauthorized?.();
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -880,7 +888,7 @@ export async function deleteAssetBundle(
 
 export async function deleteAssetBundleById(id: string): Promise<void> {
   const path = `/api/v1/asset-bundles/by-id/${encodeURIComponent(id)}`;
-  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE", credentials: "include" });
+  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE", headers: withAuthHeaders() });
   if (res.status === 401) onUnauthorized?.();
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -896,13 +904,13 @@ export async function fetchAssetBundleFile(
 ): Promise<Response> {
   const encodedPath = relativePath.split("/").map(encodeURIComponent).join("/");
   const path = `/api/v1/asset-bundles/${step}/${field}/${encodeURIComponent(value)}/files/${encodedPath}`;
-  return fetch(`${API_BASE}${path}`, { credentials: "include" });
+  return fetch(`${API_BASE}${path}`, { headers: withAuthHeaders() });
 }
 
 export async function fetchAssetBundleFileById(id: string, relativePath: string): Promise<Response> {
   const encodedPath = relativePath.split("/").map(encodeURIComponent).join("/");
   const path = `/api/v1/asset-bundles/by-id/${encodeURIComponent(id)}/files/${encodedPath}`;
-  return fetch(`${API_BASE}${path}`, { credentials: "include" });
+  return fetch(`${API_BASE}${path}`, { headers: withAuthHeaders() });
 }
 
 // ─── Prompts ─────────────────────────────────────────────────────────────────
@@ -1088,7 +1096,7 @@ export async function uploadDesignBundle(projectId: string, file: File): Promise
   fd.append("file", file);
   const res = await fetch(`${API_BASE}/api/v1/projects/${encodeURIComponent(projectId)}/design/upload`, {
     method: "POST",
-    credentials: "include",
+    headers: withAuthHeaders(),
     body: fd,
   });
   if (res.status === 401) onUnauthorized?.();
@@ -1100,7 +1108,7 @@ export async function uploadDesignBundle(projectId: string, file: File): Promise
 }
 
 export async function getDesignBundle(projectId: string): Promise<DesignBundle | null> {
-  const res = await fetch(`${API_BASE}/api/v1/projects/${encodeURIComponent(projectId)}/design`, { credentials: "include" });
+  const res = await fetch(`${API_BASE}/api/v1/projects/${encodeURIComponent(projectId)}/design`, { headers: withAuthHeaders() });
   if (res.status === 401) onUnauthorized?.();
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to load design bundle (${res.status})`);
@@ -1110,7 +1118,7 @@ export async function getDesignBundle(projectId: string): Promise<DesignBundle |
 export async function deleteDesignBundle(projectId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/projects/${encodeURIComponent(projectId)}/design`, {
     method: "DELETE",
-    credentials: "include",
+    headers: withAuthHeaders(),
   });
   if (res.status === 401) onUnauthorized?.();
   if (!res.ok && res.status !== 404) {
@@ -1140,7 +1148,7 @@ export async function saveDesignInput(
 
   const res = await fetch(`${API_BASE}/api/v1/projects/${encodeURIComponent(projectId)}/design/input`, {
     method: "PUT",
-    credentials: "include",
+    headers: withAuthHeaders(),
     body: fd,
   });
   if (res.status === 401) onUnauthorized?.();
@@ -1160,8 +1168,17 @@ export async function analyzeDesignImage(projectId: string): Promise<DesignWorkb
   return apiFetch<DesignWorkbench>(`/api/v1/projects/${encodeURIComponent(projectId)}/design/image/analyze`, { method: "POST" });
 }
 
-export function designPreviewUrl(projectId: string): string {
-  return `${API_BASE}/api/v1/projects/${encodeURIComponent(projectId)}/design/preview`;
+export async function fetchDesignPreviewHtml(projectId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/v1/projects/${encodeURIComponent(projectId)}/design/preview`, {
+    headers: withAuthHeaders(),
+  });
+  if (res.status === 401) onUnauthorized?.();
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const bodyMessage = apiErrorMessage(body);
+    throw new ApiError(res.status, body, bodyMessage || `API error: ${res.status}`);
+  }
+  return res.text();
 }
 
 export async function completeDesignWorkbench(projectId: string): Promise<DesignCompleteResponse> {
@@ -1176,15 +1193,19 @@ export interface AuthMe {
   admin: boolean;
 }
 
-export async function authRegister(email: string, password: string): Promise<AuthMe> {
-  return apiFetch<AuthMe>("/api/v1/auth/register", {
+export interface AuthTokenResponse extends AuthMe {
+  token: string;
+}
+
+export async function authRegister(email: string, password: string): Promise<AuthTokenResponse> {
+  return apiFetch<AuthTokenResponse>("/api/v1/auth/register", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
 }
 
-export async function authLogin(email: string, password: string): Promise<AuthMe> {
-  return apiFetch<AuthMe>("/api/v1/auth/login", {
+export async function authLogin(email: string, password: string): Promise<AuthTokenResponse> {
+  return apiFetch<AuthTokenResponse>("/api/v1/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
