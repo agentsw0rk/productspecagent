@@ -32,14 +32,14 @@ class CorsTest {
     fun `OPTIONS preflight from production frontend to protected endpoint returns Access-Control-Allow-Origin`() {
         mockMvc.perform(
             options("/api/v1/auth/me")
-                .header(HttpHeaders.ORIGIN, "https://productspecagent-frontend.hackathon.netrtl.com")
+                .header(HttpHeaders.ORIGIN, "https://productspecagent-frontend.netrtl.com")
                 .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
         )
             .andExpect(status().isOk())
             .andExpect(
                 header().string(
                     HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN,
-                    "https://productspecagent-frontend.hackathon.netrtl.com"
+                    "https://productspecagent-frontend.netrtl.com"
                 )
             )
     }

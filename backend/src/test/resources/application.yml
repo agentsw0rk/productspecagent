@@ -12,7 +12,7 @@ spring:
       max-request-size: 12MB
 
 cors:
-  allowed-origins: "http://localhost:3000,https://productspecagent-frontend.hackathon.netrtl.com"
+  allowed-origins: "http://localhost:3000,https://productspecagent-frontend.netrtl.com"
 
 ai:
   koog:

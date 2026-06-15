@@ -12,7 +12,7 @@ spring:
       max-request-size: 12MB
 
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:https://productspecagent-frontend.hackathon.netrtl.com}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:https://productspecagent-frontend.netrtl.com}
 
 auth:
   admin-emails: "${AUTH_ADMIN_EMAILS:},arekczarnik@googlemail.com"
@@ -22,7 +22,7 @@ auth:
   cookie:
     name: session
     secure: ${AUTH_COOKIE_SECURE:true}
-    domain: ${AUTH_COOKIE_DOMAIN:.hackathon.netrtl.com}
+    domain: ${AUTH_COOKIE_DOMAIN:netrtl.com}
 
 hackathon:
   lock:
@@ -66,7 +66,7 @@ agent:
       design-variant: MEDIUM
       design-image-analysis: MEDIUM
 app:
-  frontend-origin: ${APP_FRONTEND_ORIGIN:https://productspecagent-frontend.hackathon.netrtl.com}
+  frontend-origin: ${APP_FRONTEND_ORIGIN:https://productspecagent-frontend.netrtl.com}
   storage:
     bucket: ${S3_BUCKET:productspec-data}
     endpoint: ${S3_ENDPOINT:}

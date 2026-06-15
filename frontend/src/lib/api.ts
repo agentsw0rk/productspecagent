@@ -1,6 +1,6 @@
 import type { Category } from "@/lib/category-step-config";
 
-const PRODUCTION_API_BASE = "https://productspecagent-backend.hackathon.netrtl.com";
+const PRODUCTION_API_BASE = "https://productspecagent-backend.netrtl.com";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL
   || (process.env.NODE_ENV === "production" ? PRODUCTION_API_BASE : "http://localhost:8080");

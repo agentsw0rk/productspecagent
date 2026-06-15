@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-ENV NEXT_PUBLIC_API_URL=https://productspecagent-backend.hackathon.netrtl.com
+ENV NEXT_PUBLIC_API_URL=https://productspecagent-backend.netrtl.com
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
