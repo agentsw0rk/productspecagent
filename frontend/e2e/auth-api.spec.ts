@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiFetch, authMe, setUnauthorizedHandler } from "@/lib/api";
+import { apiFetch, authMe, fetchAssetBundleFileById, setUnauthorizedHandler } from "@/lib/api";
 import { clearAuthToken, setAuthToken } from "@/lib/auth-token";
 import { redirectAfterAuth } from "@/lib/auth-navigation";
 
@@ -90,6 +90,22 @@ test.describe("auth API unauthorized handling", () => {
 
     await expect(apiFetch("/api/v1/projects")).rejects.toThrow("API error: 401");
 
+    expect(window.sessionStorage.getItem("productspecagent.authToken")).toBeNull();
+  });
+
+  test("asset bundle file fetch triggers unauthorized handler on 401", async () => {
+    let unauthorizedRedirects = 0;
+    setAuthToken("expired-token");
+    globalThis.fetch = async () => new Response(null, { status: 401 });
+    setUnauthorizedHandler(() => {
+      clearAuthToken();
+      unauthorizedRedirects += 1;
+    });
+
+    const res = await fetchAssetBundleFileById("bundle-1", "README.md");
+
+    expect(res.status).toBe(401);
+    expect(unauthorizedRedirects).toBe(1);
     expect(window.sessionStorage.getItem("productspecagent.authToken")).toBeNull();
   });
 

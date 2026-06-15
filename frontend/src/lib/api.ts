@@ -904,13 +904,17 @@ export async function fetchAssetBundleFile(
 ): Promise<Response> {
   const encodedPath = relativePath.split("/").map(encodeURIComponent).join("/");
   const path = `/api/v1/asset-bundles/${step}/${field}/${encodeURIComponent(value)}/files/${encodedPath}`;
-  return fetch(`${API_BASE}${path}`, { headers: withAuthHeaders() });
+  const res = await fetch(`${API_BASE}${path}`, { headers: withAuthHeaders() });
+  if (res.status === 401) onUnauthorized?.();
+  return res;
 }
 
 export async function fetchAssetBundleFileById(id: string, relativePath: string): Promise<Response> {
   const encodedPath = relativePath.split("/").map(encodeURIComponent).join("/");
   const path = `/api/v1/asset-bundles/by-id/${encodeURIComponent(id)}/files/${encodedPath}`;
-  return fetch(`${API_BASE}${path}`, { headers: withAuthHeaders() });
+  const res = await fetch(`${API_BASE}${path}`, { headers: withAuthHeaders() });
+  if (res.status === 401) onUnauthorized?.();
+  return res;
 }
 
 // ─── Prompts ─────────────────────────────────────────────────────────────────
