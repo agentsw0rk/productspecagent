@@ -2,7 +2,6 @@ package com.agentwork.productspecagent.auth
 
 import com.agentwork.productspecagent.config.AuthProperties
 import jakarta.servlet.FilterChain
-import jakarta.servlet.http.Cookie
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -22,9 +21,9 @@ class JwtAuthenticationFilterTest {
     fun clear() = SecurityContextHolder.clearContext()
 
     @Test
-    fun `valid cookie sets SecurityContext authentication`() {
+    fun `valid bearer token sets SecurityContext authentication`() {
         val token = jwt.sign("u-1", "a@b.com")
-        val req = MockHttpServletRequest().apply { setCookies(Cookie("session", token)) }
+        val req = MockHttpServletRequest().apply { addHeader("Authorization", "Bearer $token") }
         val res = MockHttpServletResponse()
         val chain: FilterChain = mock()
 
@@ -34,6 +33,7 @@ class JwtAuthenticationFilterTest {
         assertNotNull(auth)
         assertEquals("u-1", auth!!.name)
         assertTrue(auth.isAuthenticated)
+        assertEquals("a@b.com", req.getAttribute("authEmail"))
         verify(chain).doFilter(req, res)
     }
 
@@ -43,7 +43,7 @@ class JwtAuthenticationFilterTest {
         val adminJwt = JwtService(adminProps)
         val adminFilter = JwtAuthenticationFilter(adminJwt, adminProps)
         val token = adminJwt.sign("u-admin", "admin@example.com")
-        val req = MockHttpServletRequest().apply { setCookies(Cookie("session", token)) }
+        val req = MockHttpServletRequest().apply { addHeader("Authorization", "Bearer $token") }
         val res = MockHttpServletResponse()
         val chain: FilterChain = mock()
 
@@ -56,7 +56,7 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    fun `missing cookie leaves SecurityContext empty`() {
+    fun `missing authorization header leaves SecurityContext empty`() {
         val req = MockHttpServletRequest()
         val res = MockHttpServletResponse()
         val chain: FilterChain = mock()
@@ -68,8 +68,8 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    fun `invalid token cookie leaves SecurityContext empty without throwing`() {
-        val req = MockHttpServletRequest().apply { setCookies(Cookie("session", "garbage")) }
+    fun `invalid bearer token leaves SecurityContext empty without throwing`() {
+        val req = MockHttpServletRequest().apply { addHeader("Authorization", "Bearer garbage") }
         val res = MockHttpServletResponse()
         val chain: FilterChain = mock()
 
@@ -79,13 +79,13 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    fun `wrong cookie name is ignored`() {
-        val token = jwt.sign("u-1", "a@b.com")
-        val req = MockHttpServletRequest().apply { setCookies(Cookie("other", token)) }
+    fun `non bearer authorization header is ignored`() {
+        val req = MockHttpServletRequest().apply { addHeader("Authorization", "Basic token") }
         val res = MockHttpServletResponse()
         val chain: FilterChain = mock()
 
         filter.doFilter(req, res, chain)
         assertNull(SecurityContextHolder.getContext().authentication)
+        verify(chain).doFilter(req, res)
     }
 }

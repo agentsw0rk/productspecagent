@@ -2,6 +2,8 @@ package com.agentwork.productspecagent.api
 
 import com.agentwork.productspecagent.service.ProjectService
 import com.agentwork.productspecagent.storage.S3TestSupport
+import com.jayway.jsonpath.JsonPath
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -49,7 +51,7 @@ class SecurityIntegrationTest : S3TestSupport() {
     }
 
     @Test
-    fun `projects endpoint without cookie returns 401`() {
+    fun `projects endpoint without bearer token returns 401`() {
         mvc.perform(get("/api/v1/projects")).andExpect(status().isUnauthorized)
     }
 
@@ -134,18 +136,20 @@ class SecurityIntegrationTest : S3TestSupport() {
     }
 
     @Test
-    fun `projects endpoint with valid session cookie does not return 401`() {
-        val res = mvc.perform(post("/api/v1/auth/register")
+    fun `projects endpoint with valid bearer token does not return 401`() {
+        val body = mvc.perform(post("/api/v1/auth/register")
             .contentType(MediaType.APPLICATION_JSON)
             .content(registerBody("user@example.com", "password123")))
-            .andReturn().response
-        val cookie = res.getCookie("session")!!
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.token").isString)
+            .andReturn()
+            .response
+            .contentAsString
+        val token: String = JsonPath.read(body, "$.token")
 
         // Don't expect a specific success code — auth gate just shouldn't reject with 401.
-        val result = mvc.perform(get("/api/v1/projects").cookie(cookie)).andReturn()
-        assert(result.response.status != 401) {
-            "Expected request through auth gate, got 401"
-        }
+        val result = mvc.perform(get("/api/v1/projects").header("Authorization", "Bearer $token")).andReturn()
+        assertNotEquals(401, result.response.status, "Expected request through auth gate, got 401")
     }
 
     @Test

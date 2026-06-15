@@ -1,6 +1,9 @@
 package com.agentwork.productspecagent.api
 
 import com.agentwork.productspecagent.storage.S3TestSupport
+import com.jayway.jsonpath.JsonPath
+import org.hamcrest.Matchers.emptyString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -11,7 +14,6 @@ import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.cookie as cookieM
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -42,14 +44,28 @@ class AuthControllerTest : S3TestSupport() {
     private fun body(email: String, pw: String) =
         """{"email":"$email","password":"$pw"}"""
 
+    private fun registerAndToken(email: String): String {
+        val body = mvc.perform(post("/api/v1/auth/register")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(body(email, "password123")))
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.token").isString)
+            .andReturn()
+            .response
+            .contentAsString
+        return JsonPath.read(body, "$.token")
+    }
+
     @Test
-    fun `register returns 201 with cookie and user info`() {
+    fun `register returns 201 with token and user info`() {
         mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body("alice@example.com", "password123")))
             .andExpect(status().isCreated)
-            .andExpect(cookieM().exists("session"))
-            .andExpect(cookieM().httpOnly("session", true))
+            .andExpect(header().doesNotExist("Set-Cookie"))
+            .andExpect(jsonPath("$.token").isString)
+            .andExpect(jsonPath("$.token").value(not(emptyString())))
             .andExpect(jsonPath("$.email").value("alice@example.com"))
             .andExpect(jsonPath("$.userId").exists())
+            .andExpect(jsonPath("$.admin").value(false))
     }
 
     @Test
@@ -69,11 +85,14 @@ class AuthControllerTest : S3TestSupport() {
     }
 
     @Test
-    fun `login with valid credentials returns 200 with cookie`() {
+    fun `login with valid credentials returns 200 with token`() {
         mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body("login@example.com", "password123")))
         mvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(body("login@example.com", "password123")))
             .andExpect(status().isOk)
-            .andExpect(cookieM().exists("session"))
+            .andExpect(header().doesNotExist("Set-Cookie"))
+            .andExpect(jsonPath("$.token").isString)
+            .andExpect(jsonPath("$.token").value(not(emptyString())))
+            .andExpect(jsonPath("$.email").value("login@example.com"))
     }
 
     @Test
@@ -91,39 +110,34 @@ class AuthControllerTest : S3TestSupport() {
     }
 
     @Test
-    fun `me without cookie returns 401`() {
+    fun `me without bearer token returns 401`() {
         mvc.perform(get("/api/v1/auth/me"))
             .andExpect(status().isUnauthorized)
     }
 
     @Test
-    fun `me with valid cookie returns 200 with user info`() {
-        val res = mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body("me@example.com", "password123")))
-            .andReturn().response
-        val cookie = res.getCookie("session")!!
-        mvc.perform(get("/api/v1/auth/me").cookie(cookie))
+    fun `me with valid bearer token returns 200 with user info`() {
+        val token = registerAndToken("me@example.com")
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer $token"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.email").value("me@example.com"))
+            .andExpect(jsonPath("$.token").doesNotExist())
     }
 
     @Test
     fun `me returns admin true for configured admin email`() {
-        val res = mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body("admin@example.com", "password123")))
-            .andReturn().response
-        val cookie = res.getCookie("session")!!
-        mvc.perform(get("/api/v1/auth/me").cookie(cookie))
+        val token = registerAndToken("admin@example.com")
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer $token"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.email").value("admin@example.com"))
             .andExpect(jsonPath("$.admin").value(true))
     }
 
     @Test
-    fun `logout clears cookie and returns 204`() {
-        val res = mvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body("lo@example.com", "password123")))
-            .andReturn().response
-        val cookie = res.getCookie("session")!!
-        mvc.perform(post("/api/v1/auth/logout").cookie(cookie))
+    fun `logout returns 204 without cookie mutation`() {
+        val token = registerAndToken("lo@example.com")
+        mvc.perform(post("/api/v1/auth/logout").header("Authorization", "Bearer $token"))
             .andExpect(status().isNoContent)
-            .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")))
+            .andExpect(header().doesNotExist("Set-Cookie"))
     }
 }
