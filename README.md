@@ -1,5 +1,4 @@
 <h1 align="center">Product Spec Agent</h1>
-
 <p align="center">
   <img src="logo.png" alt="Product Spec Agent logo" width="720">
 </p>
