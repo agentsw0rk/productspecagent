@@ -1,13 +1,12 @@
 package com.agentwork.productspecagent.api
 
-import com.agentwork.productspecagent.auth.AuthCookieService
 import com.agentwork.productspecagent.auth.JwtService
 import com.agentwork.productspecagent.config.AuthProperties
 import com.agentwork.productspecagent.domain.AuthCredentials
 import com.agentwork.productspecagent.domain.AuthMeResponse
+import com.agentwork.productspecagent.domain.AuthTokenResponse
 import com.agentwork.productspecagent.service.UserService
 import jakarta.servlet.http.HttpServletRequest
-import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
@@ -22,29 +21,25 @@ import org.springframework.web.bind.annotation.RestController
 class AuthController(
     private val users: UserService,
     private val jwt: JwtService,
-    private val cookies: AuthCookieService,
     private val authProperties: AuthProperties,
 ) {
 
     @PostMapping("/register")
-    fun register(@RequestBody credentials: AuthCredentials, response: HttpServletResponse): ResponseEntity<AuthMeResponse> {
+    fun register(@RequestBody credentials: AuthCredentials): ResponseEntity<AuthTokenResponse> {
         val user = users.register(credentials.email, credentials.password)
-        cookies.setSessionCookie(response, jwt.sign(user.id, user.email))
-        return ResponseEntity.status(HttpStatus.CREATED).body(AuthMeResponse(user.id, user.email, isAdmin(user.email)))
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            AuthTokenResponse(jwt.sign(user.id, user.email), user.id, user.email, isAdmin(user.email))
+        )
     }
 
     @PostMapping("/login")
-    fun login(@RequestBody credentials: AuthCredentials, response: HttpServletResponse): AuthMeResponse {
+    fun login(@RequestBody credentials: AuthCredentials): AuthTokenResponse {
         val user = users.authenticate(credentials.email, credentials.password)
-        cookies.setSessionCookie(response, jwt.sign(user.id, user.email))
-        return AuthMeResponse(user.id, user.email, isAdmin(user.email))
+        return AuthTokenResponse(jwt.sign(user.id, user.email), user.id, user.email, isAdmin(user.email))
     }
 
     @PostMapping("/logout")
-    fun logout(response: HttpServletResponse): ResponseEntity<Void> {
-        cookies.clearSessionCookie(response)
-        return ResponseEntity.noContent().build()
-    }
+    fun logout(): ResponseEntity<Void> = ResponseEntity.noContent().build()
 
     @GetMapping("/me")
     fun me(request: HttpServletRequest): AuthMeResponse {

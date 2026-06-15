@@ -98,7 +98,6 @@ case "$LLM_PROVIDER" in
 esac
 
 export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-dev-secret-change-me-dev-secret-change-me-dev-secret}"
-export AUTH_COOKIE_SECURE="${AUTH_COOKIE_SECURE:-false}"
 export AUTH_ADMIN_EMAILS="${AUTH_ADMIN_EMAILS:-*}"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-dev}"
 

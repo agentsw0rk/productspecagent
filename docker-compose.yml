@@ -6,7 +6,6 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: dev
       AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set in .env}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
     depends_on:
       minio:
         condition: service_healthy

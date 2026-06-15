@@ -17,7 +17,11 @@ class JwtAuthenticationFilter(
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(request: HttpServletRequest, response: HttpServletResponse, filterChain: FilterChain) {
-        val token = request.cookies?.firstOrNull { it.name == props.cookie.name }?.value
+        val token = request.getHeader("Authorization")
+            ?.takeIf { it.startsWith("Bearer ", ignoreCase = true) }
+            ?.substringAfter(" ")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
         if (token != null) {
             val payload = jwtService.parse(token)
             if (payload != null) {

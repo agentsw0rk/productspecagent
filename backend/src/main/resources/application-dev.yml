@@ -19,10 +19,6 @@ auth:
   jwt:
     secret: ${AUTH_JWT_SECRET:dev-secret-change-me-dev-secret-change-me-dev-secret}
     expiry-seconds: 604800
-  cookie:
-    name: session
-    secure: ${AUTH_COOKIE_SECURE:false}
-    domain: ${AUTH_COOKIE_DOMAIN:}
 
 ai:
   koog:

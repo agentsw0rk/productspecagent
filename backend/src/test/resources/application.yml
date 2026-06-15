@@ -54,6 +54,3 @@ auth:
   jwt:
     secret: test-secret-test-secret-test-secret-test-secret-test-secret
     expiry-seconds: 604800
-  cookie:
-    name: session
-    secure: false

@@ -33,7 +33,6 @@ class SecurityIntegrationTest : S3TestSupport() {
         @DynamicPropertySource
         fun props(registry: DynamicPropertyRegistry) {
             registry.add("auth.jwt.secret") { "0123456789abcdef0123456789abcdef0123456789abcdef" }
-            registry.add("auth.cookie.secure") { "false" }
             registry.add("app.storage.bucket") { BUCKET }
             registry.add("app.storage.endpoint") { minio.s3URL }
             registry.add("app.storage.access-key") { minio.userName }
