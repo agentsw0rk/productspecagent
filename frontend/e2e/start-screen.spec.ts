@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+const API_BASE = process.env.TEST_API_URL ?? "http://localhost:8080";
+
 test.describe("public start screen", () => {
-  test("shows the public start page without a session", async ({ page }) => {
+  test("shows the public start page without auth", async ({ page }) => {
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: /Product Spec Agent/i })).toBeVisible();
@@ -23,17 +25,22 @@ test.describe("public start screen", () => {
     await expect(page).toHaveURL(/\/login\?next=%2Fprojects$/);
   });
 
-  test("does not redirect authenticated users from the public start page back to itself", async ({ page, context }) => {
-    await context.addCookies([
-      {
-        name: "session",
-        value: "test-session",
-        domain: "localhost",
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
+  test("does not redirect authenticated users from the public start page back to itself", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.sessionStorage.setItem("productspecagent.authToken", "test-token");
+    });
+    await page.route(`${API_BASE}/api/v1/auth/me`, async (route) => {
+      const auth = route.request().headers()["authorization"];
+      if (auth !== "Bearer test-token") {
+        await route.fulfill({ status: 401 });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ userId: "u1", email: "user@example.com", admin: false }),
+      });
+    });
 
     await page.goto("/");
 

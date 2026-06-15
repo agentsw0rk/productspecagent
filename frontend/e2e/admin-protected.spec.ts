@@ -2,22 +2,20 @@ import { expect, test } from "@playwright/test";
 
 const API_BASE = process.env.TEST_API_URL ?? "http://localhost:8080";
 
-async function mockAuthenticatedSession(page: Parameters<typeof test>[0]["page"], context: Parameters<typeof test>[0]["context"]) {
-  await context.addCookies([
-    {
-      name: "session",
-      value: "test-session",
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-    },
-  ]);
+async function mockAuthenticatedSession(page: Parameters<typeof test>[0]["page"]) {
+  await page.addInitScript(() => {
+    window.sessionStorage.setItem("productspecagent.authToken", "test-token");
+  });
   await page.route(`${API_BASE}/api/v1/auth/me`, async (route) => {
+    const auth = route.request().headers()["authorization"];
+    if (auth !== "Bearer test-token") {
+      await route.fulfill({ status: 401 });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ userId: "u1", email: "user@example.com" }),
+      body: JSON.stringify({ userId: "u1", email: "user@example.com", admin: false }),
     });
   });
 }
@@ -33,8 +31,8 @@ async function mockForbidden(page: Parameters<typeof test>[0]["page"], path: str
 }
 
 test.describe("admin protected pages", () => {
-  test("prompts page shows protected-area dialog for non-admin users", async ({ page, context }) => {
-    await mockAuthenticatedSession(page, context);
+  test("prompts page shows protected-area dialog for non-admin users", async ({ page }) => {
+    await mockAuthenticatedSession(page);
     await mockForbidden(page, "/api/v1/prompts");
 
     await page.goto("/prompts");
@@ -43,8 +41,8 @@ test.describe("admin protected pages", () => {
     await expect(page.getByText(/Du hast keine Berechtigung/i)).toBeVisible();
   });
 
-  test("agent models page shows protected-area dialog for non-admin users", async ({ page, context }) => {
-    await mockAuthenticatedSession(page, context);
+  test("agent models page shows protected-area dialog for non-admin users", async ({ page }) => {
+    await mockAuthenticatedSession(page);
     await mockForbidden(page, "/api/v1/agent-models");
 
     await page.goto("/agent-models");
@@ -53,8 +51,8 @@ test.describe("admin protected pages", () => {
     await expect(page.getByText(/Du hast keine Berechtigung/i)).toBeVisible();
   });
 
-  test("asset bundles page shows protected-area dialog for non-admin users", async ({ page, context }) => {
-    await mockAuthenticatedSession(page, context);
+  test("asset bundles page shows protected-area dialog for non-admin users", async ({ page }) => {
+    await mockAuthenticatedSession(page);
     await mockForbidden(page, "/api/v1/asset-bundles");
     await page.route(`${API_BASE}/api/v1/wizard-options`, async (route) => {
       await route.fulfill({
