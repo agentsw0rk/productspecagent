@@ -3,9 +3,11 @@
 **Implementiert:** 2026-05-05
 **Branch:** `feat/login-gate`
 **Spec:** [`42-login-gate.md`](42-login-gate.md)
-**Plan:** [`docs/superpowers/plans/2026-05-05-login-gate.md`](../superpowers/plans/2026-05-05-login-gate.md)
+**Plan:** historisches Superpowers-Artefakt, nicht versioniert
 
-## Zusammenfassung
+> **Hinweis:** Diese Done-Datei dokumentiert die ursprüngliche Feature-42-Implementierung mit Cookie-Transport. Der aktuelle Auth-Transport wurde in [Feature 57 — Session-Storage Bearer Auth](57-session-storage-bearer-auth.md) auf `Authorization: Bearer <token>` + `sessionStorage` umgestellt. Für aktuelle Architekturdetails siehe [Architecture: Authentifizierung](../architecture/auth.md).
+
+## Zusammenfassung der ursprünglichen Implementierung
 
 Login-Gate vor jeder API- und UI-Aktion. Selbst-Registrierung mit Email + Passwort (≥ 8 Zeichen, BCrypt-Strength 10). Stateless JWT (HMAC-SHA256, 7 Tage fix) in einem `httpOnly; SameSite=Lax`-Session-Cookie. Backend: Spring Security 6 mit eigenem `OncePerRequestFilter`. Frontend: Next.js 16 Proxy für optimistic Cookie-Check + `AuthProvider` für Boot-Hydration. Alle eingeloggten User teilen einen gemeinsamen Workspace (kein Member-/Rollen-Modell, keine Per-User-Projekt-Ownership — wie geplant).
 
@@ -22,7 +24,7 @@ Backend-Test-Suite: 462 grün / 1 pre-existing Failure (`HandoffControllerTest` 
 | 5 | `ec1d360` | `UserService` (Email-/Password-Validation, BCrypt) + 10 Tests + `PasswordEncoder` Bean |
 | 6 | `19dd08e` | `AuthCookieService` (set/clear via `ResponseCookie`) |
 | 7 | `fd0477d` | `JwtAuthenticationFilter` (Cookie → SecurityContext) + 4 Tests + mockito-kotlin Dep |
-| 8 | `1d8a887` | `SecurityConfig` umgestellt: `permitAll` für `/auth/**` + `/health`, sonst `authenticated()` |
+| 8 | `1d8a887` | `SecurityConfig` umgestellt: `permitAll` für `/api/v1/auth/...` + `/api/health`, sonst `authenticated()` |
 | 8b | `97076cf` | Test-Bootstrap-Fix: Test-`application.yml` + `TestMockMvcSecurityConfig` + `@WithMockUser` auf 18 Controller-Tests |
 | 9 | `642535f` | `AuthController` (4 Endpoints) + `GlobalExceptionHandler` Erweiterung + 9 Tests |
 | 10 | `8dab8a6` | `SecurityIntegrationTest` (3 End-to-End-Cases) |
@@ -51,7 +53,7 @@ Plan-Task 8 sah `@WithMockUser` als optionale Maßnahme bei Test-Regressionen vo
 - Neuer Helper `backend/src/test/kotlin/.../config/TestMockMvcSecurityConfig.kt` mit `@Bean MockMvcBuilderCustomizer`, der `SecurityMockMvcConfigurers.springSecurity()` auf jede `@AutoConfigureMockMvc`-Instanz anwendet (Spring Security 6+/7 nutzt `SecurityContextHolderFilter`, daher reicht `@WithMockUser` allein nicht)
 - `@WithMockUser` als Klassen-Annotation auf 18 betroffenen Controller-Tests
 
-### `/auth/me` ist nicht permitAll
+### `/api/v1/auth/me` ist nicht permitAll
 Plan-Task 9 sah `/api/v1/auth/**` komplett `permitAll`. Damit hätte `/me` ohne Cookie 200 mit leerem Principal geliefert (nicht 401 wie spec'd). Bei T9 wurde die Konfiguration präziser gemacht: `register`/`login`/`logout` bleiben `permitAll`, `/me` fordert Auth. Test deckt das.
 
 ### docker-compose
@@ -80,7 +82,7 @@ Alle 11 Stellen jetzt mit `credentials: 'include'` und `if (res.status === 401) 
 1. **`UserService.kt:27`**: `!!` auf `passwordEncoder.encode(password)` ist redundant (Platform-Type-Defensive). Können wir bei Gelegenheit entfernen.
 2. **`HandoffControllerTest > POST export embeds project name sync URL and behavioral guidelines into CLAUDE md`** — pre-existing Failure (Content-Assertion-Bug, nicht Auth-bezogen). Existierte schon vor diesem Branch.
 3. **Frontend-Service in `docker-compose.yml` fehlt** — CLAUDE.md erwähnt einen, war aber nie gepflegt. Nicht im Login-Gate-Scope.
-4. **Rate-Limiting auf `/auth/login`** — nicht im Scope, eigenes Folge-Feature wenn nötig.
+4. **Rate-Limiting auf `/api/v1/auth/login`** — nicht im Scope, eigenes Folge-Feature wenn nötig.
 5. **Kein Server-Side Token-Invalidate beim Logout** — Cookie wird nur clientseitig gelöscht. Bei kompromittiertem Token bis zur natürlichen Expiry (7 d) gültig. Akzeptiert für interne Nutzung.
 6. **Pre-existing Typos in User-Bundles**: `asset-bundles/{dotNet,monolith,postgresql}-bundle/mainfest.json` (Tippfehler `mainfest`) wurden während Smoke Tests in `manifest.json` umbenannt. Diese Bundles wurden auch neu gezippt (manifest am ZIP-Root statt im Wrapping-Ordner für `stitch-frontend-bundle`). Sind alles Working-Tree-Artifacts des Users; Login-Gate-Code unbeeinflusst.
 

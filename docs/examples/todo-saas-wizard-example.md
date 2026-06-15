@@ -217,8 +217,8 @@ Das Backend stellt REST-Endpunkte fuer Registrierung, Login, Teamverwaltung und 
 
 **Wichtige API-Ressourcen**
 
-- `POST /auth/register`
-- `POST /auth/login`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
 - `GET /tasks`
 - `POST /tasks`
 - `PATCH /tasks/{id}`

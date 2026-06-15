@@ -206,13 +206,13 @@ POST /api/v1/projects/{projectId}/features/propose
 ```
 Features & Dependencies (Category: SaaS):
 - [F-1] Login (Backend) — depends on: —
-  API: POST /auth/login, POST /auth/logout
+  API: POST /api/v1/auth/login, POST /api/v1/auth/logout
   Data: User, Session
 - [F-2] Dashboard (Frontend) — depends on: F-1
   Screens: /dashboard, /dashboard/settings
 - [F-3] User-Profile (Frontend + Backend) — depends on: F-1
   Screens: /profile
-  API: GET /me, PATCH /me
+  API: GET /api/v1/auth/me, PATCH /api/v1/auth/me
 Isolated nodes: —
 ```
 

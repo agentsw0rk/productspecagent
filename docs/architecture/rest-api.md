@@ -8,9 +8,10 @@ RESTful API mit Prefix `/api/v1/`. JSON Request/Response Bodies.
 ### Auth
 | Method | Endpoint | Beschreibung |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/register` | User registrieren |
+| POST | `/api/v1/auth/register` | User registrieren, JWT erhalten |
 | POST | `/api/v1/auth/login` | Login, JWT erhalten |
-| POST | `/api/v1/auth/refresh` | Token erneuern |
+| POST | `/api/v1/auth/logout` | Stateless Logout |
+| GET | `/api/v1/auth/me` | Aktuellen User lesen |
 
 ### Projects
 | Method | Endpoint | Beschreibung |

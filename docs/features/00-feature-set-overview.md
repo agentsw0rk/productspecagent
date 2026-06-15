@@ -63,6 +63,8 @@ Jedes Feature ist eine eigenständige, implementierbare Einheit. Die Reihenfolge
 | 53 | Cockpit Feature-Daten aus S3 | [53-cockpit-feature-data-from-s3.md](53-cockpit-feature-data-from-s3.md) | Feature 22, 31, 50, 52 | S |
 | 54 | Cockpit Feature-Erfassung mit Wizard-Modal | [54-cockpit-feature-create-with-wizard-modal.md](54-cockpit-feature-create-with-wizard-modal.md) | Feature 22, 36, 44, 50, 53 | S–M |
 | 55 | Cockpit Living-Sync-Reporter-Anbindung | [55-cockpit-living-sync-reporter.md](55-cockpit-living-sync-reporter.md) | Feature 45, 51, 53, 54 | S |
+| 56 | Hackathon Lock | [56-hackathon-lock-done.md](56-hackathon-lock-done.md) | Feature 42 | S |
+| 57 | Session-Storage Bearer Auth | [57-session-storage-bearer-auth.md](57-session-storage-bearer-auth.md) | Feature 42 | M |
 
 ## Architecture Docs
 
@@ -78,7 +80,7 @@ Jedes Feature ist eine eigenständige, implementierbare Einheit. Die Reihenfolge
 
 | Thema | Datei |
 |-------|-------|
-| Design System | [../frontend/design-system.md](../frontend/design-system.md) |
+| Design System | _nicht vorhanden_ |
 
 ## Tech-Stack
 
@@ -88,7 +90,7 @@ Jedes Feature ist eine eigenständige, implementierbare Einheit. Die Reihenfolge
 - Rete.js (Node-Graph Visualisierung)
 
 ### Backend
-- Kotlin 2.2 + Spring Boot 4
+- Kotlin 2.3 + Spring Boot 4
 - JetBrains Koog 0.8.0 (AI Agent Framework)
 - Filesystem/Git Persistenz
 

@@ -1,26 +1,30 @@
 # Architecture: Authentifizierung
 
-> **Stand: 2026-05-05** — überarbeitet im Rahmen von [Feature 42 — Login-Gate](../features/42-login-gate.md). Frühere Versionen beschrieben ein Member-/Rollenmodell mit Refresh-Tokens; das wurde zugunsten YAGNI auf das Minimum reduziert.
+> **Stand: 2026-06-15** — überarbeitet im Rahmen von [Feature 57 — Session-Storage Bearer Auth](../features/57-session-storage-bearer-auth.md). Feature 42 führte das Login-Gate ein; Feature 57 ersetzt den Cookie-Transport durch Bearer Tokens.
 
 ## Überblick
 
-Login-Gate vor jeder Aktion via Spring Security + selbst-signiertem JWT in einem httpOnly-Session-Cookie. Eingeloggte User teilen einen gemeinsamen Workspace — keine Mitglieder, keine Rollen, keine Per-User-Projekt-Ownership.
+Login-Gate vor jeder Aktion via Spring Security + selbst-signiertem JWT. Das Backend gibt den JWT bei Login/Register im JSON zurück, das Frontend speichert ihn im Browser-`sessionStorage` und sendet ihn bei API-Requests als `Authorization: Bearer <token>`.
+
+Eingeloggte User teilen einen gemeinsamen Workspace — keine Mitglieder, keine Rollen, keine Per-User-Projekt-Ownership. Admin-Rechte werden weiterhin aus konfigurierten Admin-Emails abgeleitet.
 
 ## Flow
 
-1. User registriert sich via `POST /api/v1/auth/register` (`{email, password}`)
-2. User loggt sich ein via `POST /api/v1/auth/login` (`{email, password}`)
-3. Backend validiert BCrypt-Hash, signiert JWT (HMAC-SHA256, ENV-Secret) und setzt es als Cookie:
-   `Set-Cookie: session=<jwt>; HttpOnly; Secure; SameSite=Lax; Max-Age=604800; Path=/`
-4. Browser sendet das Cookie automatisch bei jedem Folge-Request
-5. Backend (JwtAuthenticationFilter) liest Cookie, validiert JWT, setzt SecurityContext
-6. Logout via `POST /api/v1/auth/logout` setzt das Cookie auf `Max-Age=0`
+1. User registriert sich via `POST /api/v1/auth/register` (`{email, password}`).
+2. User loggt sich ein via `POST /api/v1/auth/login` (`{email, password}`).
+3. Backend validiert BCrypt-Hash, signiert JWT (HMAC-SHA256, ENV-Secret) und antwortet mit `{ token, userId, email, admin }`.
+4. Frontend speichert `token` in `sessionStorage`.
+5. Frontend sendet bei API-Requests `Authorization: Bearer <token>`.
+6. Backend (`JwtAuthenticationFilter`) liest den `Authorization`-Header, validiert JWT und setzt den `SecurityContext`.
+7. Reload mit Token stellt die Session via `GET /api/v1/auth/me` wieder her.
+8. Logout via `POST /api/v1/auth/logout` ist backendseitig stateless und antwortet `204`; das Frontend löscht den Token aus `sessionStorage`.
 
 ## Token-Strategie
 
-- **Ein einziges Cookie**, 7 Tage gültig, fix (kein Sliding, kein Refresh-Token)
-- Bei Ablauf: User loggt sich neu ein
-- Bei Logout-Wunsch von einem fremden Gerät: keine Server-Side-Invalidation in dieser Iteration (akzeptiertes Risiko bei interner Nutzung)
+- JWT im JSON-Response bei Login/Register, 7 Tage gültig, fix (kein Sliding, kein Refresh-Token).
+- Speicherung pro Browser-Tab/Fenster in `sessionStorage`; ein neuer Tab startet ohne geteilten Login-Zustand.
+- Bei Ablauf oder fehlendem Token loggt sich der User neu ein.
+- Bei Logout-Wunsch von einem fremden Gerät: keine Server-Side-Invalidation in dieser Iteration (akzeptiertes Risiko bei interner Nutzung).
 
 ## Persistenz
 
@@ -33,10 +37,10 @@ Login-Gate vor jeder Aktion via Spring Security + selbst-signiertem JWT in einem
 
 | Method | Path | Body | Response |
 |---|---|---|---|
-| POST | `/api/v1/auth/register` | `{email, password}` | 201 + `Set-Cookie` + `{userId, email}` |
-| POST | `/api/v1/auth/login` | `{email, password}` | 200 + `Set-Cookie` + `{userId, email}` |
-| POST | `/api/v1/auth/logout` | — | 204 + `Set-Cookie: session=; Max-Age=0` |
-| GET | `/api/v1/auth/me` | — | 200 `{userId, email}` oder 401 |
+| POST | `/api/v1/auth/register` | `{email, password}` | 201 + `{token, userId, email, admin}` |
+| POST | `/api/v1/auth/login` | `{email, password}` | 200 + `{token, userId, email, admin}` |
+| POST | `/api/v1/auth/logout` | — | 204 |
+| GET | `/api/v1/auth/me` | — | 200 `{userId, email, admin}` oder 401 |
 
 Error-Bodies generisch (`INVALID_CREDENTIALS`, `EMAIL_ALREADY_EXISTS`, `VALIDATION_ERROR`) — kein Hinweis auf Email-Existenz (User-Enumeration).
 
@@ -44,33 +48,50 @@ Error-Bodies generisch (`INVALID_CREDENTIALS`, `EMAIL_ALREADY_EXISTS`, `VALIDATI
 
 - Stateless Sessions (`SessionCreationPolicy.STATELESS`)
 - `SecurityFilterChain`:
-  - `permitAll()` für `/api/health` und `/api/v1/auth/**`
-  - `authenticated()` für `anyRequest()`
+  - `permitAll()` für `/api/health`
+  - `permitAll()` für `/api/v1/auth/register`, `/api/v1/auth/login` und `/api/v1/auth/logout`
+  - `permitAll()` für `GET /api/v1/config/features`
+  - `permitAll()` für `GET /api/v1/wizard-options`
+  - `permitAll()` für `GET /api/v1/projects/*/handoff/handoff.zip`
+  - `permitAll()` für `POST /api/v1/projects/*/living-sync/**`
+  - `permitAll()` für `POST /mcp`
+  - Admin-only Gruppen bleiben role-gated (`/api/v1/admin/wizard-options/**`, `/api/v1/prompts/**`, `/api/v1/agent-models/**`, `/api/v1/asset-bundles/**`)
+  - `authenticated()` für geschützte API-Endpunkte
   - `JwtAuthenticationFilter` vor `UsernamePasswordAuthenticationFilter`
   - `AuthenticationEntryPoint` setzt 401 ohne Body-Redirect (JSON-API)
+- `JwtAuthenticationFilter` validiert ausschließlich Bearer Tokens aus dem `Authorization`-Header.
 - `BCryptPasswordEncoder(strength = 10)`
-- CORS mit `allowCredentials = true` und konkreter Frontend-Origin (kein `*`)
+- CORS erlaubt die konkrete Frontend-Origin; Authentifizierung hängt nicht von Browser-Credentials ab.
 
 ## Frontend-Auth (Next.js 16 App Router)
 
-- `proxy.ts` prüft optimistisch Cookie-Existenz, redirected zu `/login` bei fehlendem Cookie
-- Public Routes: `/login`, `/register`
-- `lib/api.ts` setzt `credentials: 'include'`, globaler 401-Handler clear-t Auth-Store + redirected
-- `auth-store` (Zustand) initialisiert via `GET /auth/me` im Root-Layout (verhindert Flash auf `/login` bei Reload)
+- Public Routes: `/`, `/login`, `/register`, `/start-screen`
+- `auth-store` (Zustand) hält Userdaten und Token im Client-State und synchronisiert den Token mit `sessionStorage`.
+- `lib/api.ts` hängt bei vorhandenem Token `Authorization: Bearer <token>` an API-Requests an.
+- Globaler 401-Handler löscht Auth-Store und `sessionStorage` und navigiert zu `/login`.
+- Es gibt keinen Next.js Proxy/Middleware-Auth-Gate mehr; geschützte Seiten werden clientseitig nach Hydration gegated, weil `sessionStorage` nur im Browser verfügbar ist.
 
 ## Konfiguration
 
 ```yaml
 auth:
+  admin-emails: "${AUTH_ADMIN_EMAILS:},arekczarnik@googlemail.com"
   jwt:
-    secret: ${AUTH_JWT_SECRET:}        # Pflicht in prod, fail-fast bei leer
-    expiry: 604800                     # 7 Tage
-  cookie:
-    name: session
-    secure: ${AUTH_COOKIE_SECURE:true} # in dev: false (lokales http)
+    secret: ${AUTH_JWT_SECRET:dev-secret-change-me-dev-secret-change-me-dev-secret}
+    expiry-seconds: 604800
 ```
 
-`AUTH_JWT_SECRET` muss eine HMAC-taugliche Zeichenkette sein (≥ 32 Bytes). Beispiel-Generierung: `openssl rand -base64 48`.
+`AUTH_JWT_SECRET` sollte in deployten Umgebungen gesetzt werden und mindestens 32 Bytes lang sein. Der Repository-Default ist ein Entwicklungs-Fallback; Deployments müssen ihn durch ein echtes Secret ersetzen. Beispiel-Generierung: `openssl rand -base64 48`.
+
+`AUTH_ADMIN_EMAILS` ist eine kommaseparierte Liste. `*` kann in lokaler/dev-Konfiguration verwendet werden, wenn bewusst alle User Admin-Rechte erhalten sollen.
+
+## Security Notes
+
+- CSRF-Risiko ist reduziert, weil der Browser den Token nicht automatisch als Cookie mitsendet.
+- XSS-Auswirkung ist höher: Script-Ausführung im Frontend kann den Token aus `sessionStorage` lesen.
+- `sessionStorage` ist bewusst gegenüber `localStorage` gewählt, damit Login-Zustand pro Browser-Tab/Fenster begrenzt bleibt.
+- Es gibt keine Refresh Tokens, kein Sliding Expiration und keine Server-Side Token-Invalidation.
+- Die frühere Cookie-Architektur war Deployment-seitig anfällig für CORS-/Domain-Konfiguration; der aktuelle Transport vermeidet diese Kopplung.
 
 ## Password-Regeln
 
@@ -85,6 +106,6 @@ NIST 800-63B-konform:
 - Refresh-Tokens, Sliding Expiration, Server-Side Token-Invalidation
 - Email-Verifikation, Password-Reset, Account-Löschung
 - OAuth/SSO/SAML
-- Rate-Limiting auf `/auth/login`
+- Rate-Limiting auf `/api/v1/auth/login`
 
 Diese Punkte können als spätere Features ergänzt werden, sobald die Anwendungsfälle eintreten.

@@ -3,22 +3,24 @@
 **Phase:** Auth/Security
 **Abhängig von:** Feature 0 (Project Setup, done)
 **Aufwand:** M
-**Design-Spec:** [`docs/superpowers/specs/2026-05-05-login-gate-design.md`](../superpowers/specs/2026-05-05-login-gate-design.md)
+**Design-Spec:** historisches Superpowers-Artefakt, nicht versioniert
+
+> **Hinweis:** Feature 42 beschreibt die ursprüngliche Login-Gate-Implementierung mit Cookie-Transport. Der aktuelle Auth-Transport wurde in [Feature 57 — Session-Storage Bearer Auth](57-session-storage-bearer-auth.md) auf `Authorization: Bearer <token>` + `sessionStorage` umgestellt. Für aktuelle Architekturdetails siehe [Architecture: Authentifizierung](../architecture/auth.md).
 
 ## Problem
 
 Die App hat heute keinen Zugangsschutz: `SecurityConfig.kt` setzt `permitAll()` auf `/api/v1/**`, das Frontend hat weder Login-Seiten noch Auth-Concept. Sobald die App über `localhost` hinaus erreichbar ist, sind alle Projekte, Spec-Files, Decisions, Tasks und Uploads ungeschützt.
 
-## Ziel
+## Ursprüngliches Ziel
 
 Login-Gate mit Selbst-Registrierung vor jeder Aktion. Eingeloggte User teilen einen gemeinsamen Workspace (alle sehen alle Projekte). Keine Rollen, keine Email-Verifikation, kein Password-Reset — strikt YAGNI.
 
-## Architektur
+## Ursprüngliche Architektur
 
 Siehe Design-Spec für das vollständige Bild. Kurzfassung:
 
 - **Backend:** neue Pakete `auth/` (User, JwtService, AuthController, JwtAuthenticationFilter, UserStorage). `SecurityConfig` umgestellt auf `authenticated()` für alles ausser `/api/v1/auth/**` und `/api/health`. Stateless JWT in httpOnly-Cookie (HMAC-SHA256, 7 Tage fix, kein Refresh). BCrypt-Strength 10.
-- **Frontend:** `proxy.ts` prüft optimistisch das Session-Cookie und redirected zu `/login`. Neue Routes `app/(auth)/login` + `app/(auth)/register` mit shadcn-Forms. `lib/api.ts` erweitert um `credentials: 'include'` und globalen 401-Handler. `auth-store` (Zustand) hält den User und blockt Flash-of-Login bei Reload via `GET /auth/me` im Root-Layout.
+- **Frontend:** `proxy.ts` prüft optimistisch das Session-Cookie und redirected zu `/login`. Neue Routes `app/(auth)/login` + `app/(auth)/register` mit shadcn-Forms. `lib/api.ts` erweitert um `credentials: 'include'` und globalen 401-Handler. `auth-store` (Zustand) hält den User und blockt Flash-of-Login bei Reload via `GET /api/v1/auth/me` im Root-Layout.
 - **Lib:** `io.jsonwebtoken:jjwt-api/jjwt-impl/jjwt-jackson` (selbst-signierte Tokens, knapper als `oauth2ResourceServer`).
 
 ## Datenmodell
@@ -35,7 +37,7 @@ data class User(
 
 Persistiert als `data/users/{user-id}.json`. Email-Index als Pointer-File `data/users/_index/email-{lowercase}.json` (`{ userId }`) — konsistent mit No-DB-Konzept, kein Locking.
 
-## API
+## Ursprüngliche API
 
 | Method | Path | Body | Response |
 |---|---|---|---|
@@ -46,7 +48,7 @@ Persistiert als `data/users/{user-id}.json`. Email-Index als Pointer-File `data/
 
 Error-Bodies generisch (`{error, message}`), keine User-Enumeration.
 
-## Konfiguration
+## Ursprüngliche Konfiguration
 
 `application.yml` neue Sektion:
 ```yaml
@@ -61,7 +63,7 @@ auth:
 
 `docker-compose.yml`: `AUTH_JWT_SECRET` als Pflicht-ENV, `AUTH_COOKIE_SECURE=false` für lokales http.
 
-## Akzeptanzkriterien
+## Ursprüngliche Akzeptanzkriterien
 
 1. Aufruf von `/` ohne Cookie → automatisch redirect zu `/login`.
 2. `/register` legt Konto an, setzt Cookie, redirected zu `/`.
@@ -102,7 +104,7 @@ auth:
 
 **Geändert (Frontend):**
 - `frontend/src/lib/api.ts` — `credentials: 'include'` + 401-Handler
-- `frontend/src/app/layout.tsx` — Auth-Provider mountet `GET /auth/me` und initialisiert `auth-store`
+- `frontend/src/app/layout.tsx` — Auth-Provider mountet `GET /api/v1/auth/me` und initialisiert `auth-store`
 - `frontend/src/components/layout/AppShell.tsx` — Logout-Button + User-Email-Anzeige
 
 **Geändert (Docs):**
