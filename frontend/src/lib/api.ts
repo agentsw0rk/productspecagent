@@ -1,10 +1,7 @@
 import type { Category } from "@/lib/category-step-config";
 import { getAuthToken } from "@/lib/auth-token";
 
-const PRODUCTION_API_BASE = "https://productspecagent-backend.netrtl.com";
-
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL
-  || (process.env.NODE_ENV === "production" ? PRODUCTION_API_BASE : "http://localhost:8080");
 
 let onUnauthorized: (() => void) | null = null;
 
