@@ -1,7 +1,8 @@
 import type { Category } from "@/lib/category-step-config";
 import { getAuthToken } from "@/lib/auth-token";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL
+
+export const API_BASE = "https://productspecagent.netrtl.com"
 
 let onUnauthorized: (() => void) | null = null;
 
