@@ -1,8 +1,17 @@
 import type { Category } from "@/lib/category-step-config";
 import { getAuthToken } from "@/lib/auth-token";
 
+const DEVELOPMENT_API_BASE = "http://localhost:8080";
 
-export const API_BASE = "https://productspecagent.netrtl.com"
+export function resolveApiBase(env: Pick<NodeJS.ProcessEnv, "NEXT_PUBLIC_API_URL" | "NODE_ENV"> = process.env): string {
+  const configuredBase = env.NEXT_PUBLIC_API_URL?.trim();
+  if (configuredBase) {
+    return configuredBase.replace(/\/+$/, "");
+  }
+  return env.NODE_ENV === "development" ? DEVELOPMENT_API_BASE : "";
+}
+
+export const API_BASE = resolveApiBase();
 
 let onUnauthorized: (() => void) | null = null;
 

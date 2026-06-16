@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { apiFetch, authMe, fetchAssetBundleFileById, setUnauthorizedHandler } from "@/lib/api";
+import { apiFetch, authMe, fetchAssetBundleFileById, resolveApiBase, setUnauthorizedHandler } from "@/lib/api";
 import { clearAuthToken, setAuthToken } from "@/lib/auth-token";
 import { redirectAfterAuth } from "@/lib/auth-navigation";
 
@@ -117,5 +117,11 @@ test.describe("auth API unauthorized handling", () => {
     });
 
     expect(redirects).toEqual(["/projects"]);
+  });
+
+  test("API base uses configured URL, localhost for development, and same-origin for production", () => {
+    expect(resolveApiBase({ NEXT_PUBLIC_API_URL: "https://api.example.test", NODE_ENV: "production" })).toBe("https://api.example.test");
+    expect(resolveApiBase({ NODE_ENV: "development" })).toBe("http://localhost:8080");
+    expect(resolveApiBase({ NODE_ENV: "production" })).toBe("");
   });
 });
