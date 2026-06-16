@@ -32,7 +32,24 @@ include:
 docker-build:
   stage: build
   script:
-    - redo docker:build docker:push -Dproject_name=$PROJECT_DIR -Ddocker_build_ctx=$PROJECT_DIR -Ddocker_build_file=$PROJECT_DIR/Dockerfile
+    - |
+      if [ "$PROJECT_DIR" = "frontend" ]; then
+        if [ -n "${NEXT_PUBLIC_API_URL:-}" ]; then
+          echo "Passing NEXT_PUBLIC_API_URL as Docker build arg for frontend (set)"
+        else
+          echo "Passing NEXT_PUBLIC_API_URL as Docker build arg for frontend (unset)"
+        fi
+        redo docker:build docker:push \
+          -Dproject_name=$PROJECT_DIR \
+          -Ddocker_build_ctx=$PROJECT_DIR \
+          -Ddocker_build_file=$PROJECT_DIR/Dockerfile \
+          -Ddocker_build_args="--build-arg NEXT_PUBLIC_API_URL"
+      else
+        redo docker:build docker:push \
+          -Dproject_name=$PROJECT_DIR \
+          -Ddocker_build_ctx=$PROJECT_DIR \
+          -Ddocker_build_file=$PROJECT_DIR/Dockerfile
+      fi
   rules:
     - if: $CI_COMMIT_BRANCH
   parallel:

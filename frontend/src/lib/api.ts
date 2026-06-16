@@ -3,7 +3,12 @@ import { getAuthToken } from "@/lib/auth-token";
 
 const DEVELOPMENT_API_BASE = "http://localhost:8080";
 
-export function resolveApiBase(env: Pick<NodeJS.ProcessEnv, "NEXT_PUBLIC_API_URL" | "NODE_ENV"> = process.env): string {
+interface ApiBaseEnv {
+  NEXT_PUBLIC_API_URL?: string;
+  NODE_ENV?: string;
+}
+
+export function resolveApiBase(env: ApiBaseEnv = process.env): string {
   const configuredBase = env.NEXT_PUBLIC_API_URL?.trim();
   if (configuredBase) {
     return configuredBase.replace(/\/+$/, "");
