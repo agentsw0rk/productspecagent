@@ -9,12 +9,12 @@ default:
       - stuck_or_timeout_failure
 
 variables:
-  ARGOCD_PROJECT: cvdt/hackathon/argocd-internal
+  ARGOCD_PROJECT: cvdt/argocd-internal
 
 stages:
   - build
   - deploy-vars
-  - deploy-dev
+  - deploy-prod
 
 include:
   - project: templates/ci/redo
@@ -23,9 +23,9 @@ include:
     file: /jobs/version-commit.gitlab-ci.yml
   - component: gitlab.netrtl.com/templates/ci/component/argocd/deploy@0
     inputs:
-      step: deploy-dev
-      stage: deploy-dev
-      argocd_app_dir: apps/productspecagent/dev
+      step: deploy-prod
+      stage: deploy-prod
+      argocd_app_dir: apps/productspecagent/prod
       argocd_app_values: values.yaml
       when: always
 
