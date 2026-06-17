@@ -116,7 +116,7 @@ class GlobalExceptionHandler {
     @ExceptionHandler(MaxUploadSizeExceededException::class)
     @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
     fun handleMaxUpload(ex: MaxUploadSizeExceededException): ErrorResponse =
-        ErrorResponse("FILE_TOO_LARGE", "File exceeds maximum size of 10 MB", Instant.now().toString())
+        ErrorResponse("FILE_TOO_LARGE", "File exceeds maximum size of 20 MB", Instant.now().toString())
 
     @ExceptionHandler(UnsupportedMediaTypeException::class)
     @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)

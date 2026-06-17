@@ -203,8 +203,8 @@ class AssetBundleControllerTest {
 
     @Test
     fun `POST asset-bundles 413 for too-large bundle`() {
-        // 101 files exceeds the 100-file limit → BundleTooLargeException → 413
-        val files = (1..101).associate { "skills/file-$it.md" to "x".toByteArray() }
+        // 201 files exceeds the 200-file limit -> BundleTooLargeException -> 413
+        val files = (1..201).associate { "skills/file-$it.md" to "x".toByteArray() }
         val zipBytes = zipFor(files = files)
         val mockFile = org.springframework.mock.web.MockMultipartFile("file", "huge.zip", "application/zip", zipBytes)
 
