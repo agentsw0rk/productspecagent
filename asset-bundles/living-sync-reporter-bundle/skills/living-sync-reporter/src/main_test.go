@@ -1,10 +1,14 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNormalizeStatusAliases(t *testing.T) {
@@ -20,6 +24,22 @@ func TestNormalizeStatusAliases(t *testing.T) {
 		if got := normalizeStatus(input); got != expected {
 			t.Fatalf("normalizeStatus(%q) = %q, want %q", input, got, expected)
 		}
+	}
+}
+
+func TestFeatureIDUsesExplicitFlagBeforeEnvironment(t *testing.T) {
+	t.Setenv("LIVING_SYNC_FEATURE_ID", "feature-from-env")
+
+	if got := featureID(" feature-from-flag "); got != "feature-from-flag" {
+		t.Fatalf("featureID explicit = %q, want feature-from-flag", got)
+	}
+}
+
+func TestFeatureIDFallsBackToEnvironment(t *testing.T) {
+	t.Setenv("LIVING_SYNC_FEATURE_ID", " feature-from-env ")
+
+	if got := featureID(""); got != "feature-from-env" {
+		t.Fatalf("featureID fallback = %q, want feature-from-env", got)
 	}
 }
 
@@ -62,6 +82,98 @@ func TestCommandExitCodeFindsNestedStringValue(t *testing.T) {
 
 	if got := commandExitCode(payload); got != 1 {
 		t.Fatalf("commandExitCode = %d, want 1", got)
+	}
+}
+
+func TestPostJSONSupportsHTTPAndHTTPS(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/report-sync-note" {
+			t.Fatalf("path = %s, want /report-sync-note", r.URL.Path)
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Fatalf("Content-Type = %q, want application/json", r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	httpBody, err := postJSON(httpServer.URL+"/report-sync-note", []byte(`{"message":"http"}`), time.Second)
+	if err != nil {
+		t.Fatalf("postJSON HTTP returned error: %v", err)
+	}
+	if string(httpBody) != `{"ok":true}` {
+		t.Fatalf("HTTP body = %q, want ok response", string(httpBody))
+	}
+
+	httpsServer := httptest.NewTLSServer(handler)
+	defer httpsServer.Close()
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = httpsServer.Client().Transport
+	defer func() {
+		http.DefaultTransport = originalTransport
+	}()
+
+	httpsBody, err := postJSON(httpsServer.URL+"/report-sync-note", []byte(`{"message":"https"}`), time.Second)
+	if err != nil {
+		t.Fatalf("postJSON HTTPS returned error: %v", err)
+	}
+	if string(httpsBody) != `{"ok":true}` {
+		t.Fatalf("HTTPS body = %q, want ok response", string(httpsBody))
+	}
+}
+
+func TestImportDoneMarkdownUsesProjectScopedRestEndpoint(t *testing.T) {
+	var received map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+			http.Error(w, "wrong method", http.StatusMethodNotAllowed)
+			return
+		}
+		expectedPath := "/api/v1/projects/project-123/living-sync/mcp/import-feature-done-markdown"
+		if r.URL.Path != expectedPath {
+			t.Errorf("path = %s, want %s", r.URL.Path, expectedPath)
+			http.Error(w, "wrong path", http.StatusNotFound)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Errorf("decode request body: %v", err)
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"event-1"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("LIVING_SYNC_BASE_URL", server.URL+"/api/v1/projects/project-123/living-sync/mcp")
+	t.Setenv("LIVING_SYNC_MCP_URL", server.URL+"/mcp")
+
+	err := importDoneMarkdown(doneImportRequest{
+		FeatureID: "feature-1",
+		FileName:  "feature-1-done.md",
+		Markdown:  "# Done",
+	}, "codex")
+	if err != nil {
+		t.Fatalf("importDoneMarkdown returned error: %v", err)
+	}
+	if received["featureId"] != "feature-1" {
+		t.Fatalf("featureId = %v, want feature-1", received["featureId"])
+	}
+	if received["fileName"] != "feature-1-done.md" {
+		t.Fatalf("fileName = %v, want feature-1-done.md", received["fileName"])
+	}
+	if received["markdown"] != "# Done" {
+		t.Fatalf("markdown = %v, want # Done", received["markdown"])
+	}
+	if received["agentName"] != "codex" {
+		t.Fatalf("agentName = %v, want codex", received["agentName"])
 	}
 }
 

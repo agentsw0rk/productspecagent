@@ -70,8 +70,11 @@ sh .claude/skills/global.living-sync-reporter/living-sync-reporter/bin/living-sy
 After the user confirms the MVP scope, report a concise note with selected
 features and blockers. If feature IDs are available, report `feature-progress`
 for selected features as `PLANNED` or `IN_PROGRESS` only when work actually
-starts. If the reporter is missing or unreachable, continue and mention the
-reporting gap.
+starts. When starting work on a concrete feature, read `feature_id` from the
+matching `docs/features/*.md`, export it as `FEATURE_ID` and
+`LIVING_SYNC_FEATURE_ID`, and pass `--feature "$FEATURE_ID"` on manual
+`test-run`, `code-changes`, `token-usage`, and `sync-note` reports. If the
+reporter is missing or unreachable, continue and mention the reporting gap.
 
 ## Output Shape
 

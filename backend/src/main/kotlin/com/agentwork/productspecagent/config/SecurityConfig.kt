@@ -36,6 +36,7 @@ class SecurityConfig(private val jwtAuthenticationFilter: JwtAuthenticationFilte
                     .requestMatchers("/api/v1/agent-models", "/api/v1/agent-models/**").hasRole("ADMIN")
                     .requestMatchers("/api/v1/asset-bundles", "/api/v1/asset-bundles/**").hasRole("ADMIN")
                     .requestMatchers(HttpMethod.GET, "/api/v1/projects/*/handoff/handoff.zip").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/v1/projects/*/living-sync/mcp/import-feature-done-markdown").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/v1/projects/*/living-sync/**").permitAll()
                     .requestMatchers(HttpMethod.POST, "/mcp").permitAll()
                     .anyRequest().authenticated()

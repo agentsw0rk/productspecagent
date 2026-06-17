@@ -135,6 +135,19 @@ class SecurityIntegrationTest : S3TestSupport() {
     }
 
     @Test
+    fun `living sync done import endpoint passes auth gate without bearer token`() {
+        val projectId = projectService.createProject("Living Sync Done Import").project.id
+
+        val result = mvc.perform(
+            post("/api/v1/projects/$projectId/living-sync/mcp/import-feature-done-markdown")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        ).andReturn()
+
+        assertNotEquals(401, result.response.status, "Expected done import endpoint through auth gate, got 401")
+    }
+
+    @Test
     fun `projects endpoint with valid bearer token does not return 401`() {
         val body = mvc.perform(post("/api/v1/auth/register")
             .contentType(MediaType.APPLICATION_JSON)

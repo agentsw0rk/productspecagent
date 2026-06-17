@@ -88,6 +88,15 @@ feature_id: 7f3d8d5d-...
 ---
 ```
 
+Wenn du an einem konkreten Feature arbeitest, setze diese ID als Kontext fuer manuelle Reports und Hooks:
+
+```bash
+export FEATURE_ID="7f3d8d5d-..."
+export LIVING_SYNC_FEATURE_ID="$FEATURE_ID"
+```
+
+Uebergebe bei manuellen Feature-Reports, Testlaeufen, Token-Nutzung, Code-Aenderungen und Sync-Notes immer `--feature "$FEATURE_ID"`.
+
 Verwende fuer `*-done.md` immer das zugehoerige Feature-Dokument mit derselben Basisdatei, damit der Reporter die ID eindeutig aufloesen kann.
 
 ## Fertig bedeutet

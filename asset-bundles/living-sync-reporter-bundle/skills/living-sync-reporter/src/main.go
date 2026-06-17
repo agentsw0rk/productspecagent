@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
@@ -10,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -21,11 +20,12 @@ import (
 )
 
 var endpoints = map[string]string{
-	"feature-progress": "/report-feature-progress",
-	"test-run":         "/report-test-run",
-	"token-usage":      "/report-token-usage",
-	"code-changes":     "/report-code-changes",
-	"sync-note":        "/report-sync-note",
+	"feature-progress":    "/report-feature-progress",
+	"feature-done-import": "/import-feature-done-markdown",
+	"test-run":            "/report-test-run",
+	"token-usage":         "/report-token-usage",
+	"code-changes":        "/report-code-changes",
+	"sync-note":           "/report-sync-note",
 }
 
 var testCommandMarkers = []string{
@@ -166,6 +166,16 @@ func baseURL() (string, error) {
 }
 
 func post(kind string, payload map[string]any) error {
+	timeout := 2 * time.Second
+	if raw := strings.TrimSpace(os.Getenv("LIVING_SYNC_TIMEOUT_SECONDS")); raw != "" {
+		if seconds, err := strconv.ParseFloat(raw, 64); err == nil && seconds > 0 {
+			timeout = time.Duration(seconds * float64(time.Second))
+		}
+	}
+	return postWithTimeout(kind, payload, timeout)
+}
+
+func postWithTimeout(kind string, payload map[string]any, timeout time.Duration) error {
 	suffix, ok := endpoints[kind]
 	if !ok {
 		return fmt.Errorf("unknown endpoint kind: %s", kind)
@@ -179,13 +189,6 @@ func post(kind string, payload map[string]any) error {
 		return err
 	}
 
-	timeout := 2 * time.Second
-	if raw := strings.TrimSpace(os.Getenv("LIVING_SYNC_TIMEOUT_SECONDS")); raw != "" {
-		if seconds, err := strconv.ParseFloat(raw, 64); err == nil && seconds > 0 {
-			timeout = time.Duration(seconds * float64(time.Second))
-		}
-	}
-
 	_, err = postJSON(base+suffix, body, timeout)
 	return err
 }
@@ -195,67 +198,32 @@ func postJSON(rawURL string, body []byte, timeout time.Duration) ([]byte, error)
 	if err != nil {
 		return nil, err
 	}
-	if parsed.Scheme != "http" {
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, fmt.Errorf("unsupported scheme: %s", parsed.Scheme)
 	}
-	host := parsed.Host
-	if !strings.Contains(host, ":") {
-		host += ":80"
-	}
-	conn, err := net.DialTimeout("tcp", host, timeout)
+	request, err := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	request.Header.Set("Content-Type", "application/json")
 
-	path := parsed.RequestURI()
-	if path == "" {
-		path = "/"
-	}
-	request := bytes.Buffer{}
-	fmt.Fprintf(&request, "POST %s HTTP/1.1\r\n", path)
-	fmt.Fprintf(&request, "Host: %s\r\n", parsed.Host)
-	fmt.Fprint(&request, "Content-Type: application/json\r\n")
-	fmt.Fprintf(&request, "Content-Length: %d\r\n", len(body))
-	fmt.Fprint(&request, "Connection: close\r\n\r\n")
-	request.Write(body)
-	if _, err := conn.Write(request.Bytes()); err != nil {
+	client := http.Client{Timeout: timeout}
+	response, err := client.Do(request)
+	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 
-	reader := bufio.NewReader(conn)
-	statusLine, err := reader.ReadString('\n')
+	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}
-	parts := strings.Fields(statusLine)
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("invalid HTTP response: %s", strings.TrimSpace(statusLine))
-	}
-	statusCode, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return nil, err
-	}
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		if line == "\r\n" {
-			break
-		}
-	}
-	responseBody, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-	if statusCode < 200 || statusCode >= 300 {
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		message := strings.TrimSpace(string(responseBody))
 		if message == "" {
-			return nil, fmt.Errorf("HTTP %d", statusCode)
+			return nil, fmt.Errorf("HTTP %d", response.StatusCode)
 		}
-		return nil, fmt.Errorf("HTTP %d: %s", statusCode, truncate(message, 240))
+		return nil, fmt.Errorf("HTTP %d: %s", response.StatusCode, truncate(message, 240))
 	}
 	return responseBody, nil
 }
@@ -381,7 +349,7 @@ func handlePostToolUse(reader io.Reader) error {
 		"summary":   fmt.Sprintf("Command %s: %s", status, truncate(compactCommand, 160)),
 		"passed":    boolInt(exitCode == 0),
 		"failed":    boolInt(exitCode != 0),
-		"featureId": os.Getenv("LIVING_SYNC_FEATURE_ID"),
+		"featureId": featureID(""),
 		"agentName": "claude-code",
 	})
 }
@@ -394,6 +362,7 @@ func handleCodeChange(reader io.Reader) error {
 	if err := safePost("code-changes", map[string]any{
 		"summary":   "Files changed by coding agent.",
 		"files":     files,
+		"featureId": featureID(""),
 		"agentName": "claude-code",
 	}); err != nil {
 		return err
@@ -419,11 +388,12 @@ func handleFeatureProgress(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *feature == "" || *summary == "" {
+	resolvedFeature := featureID(*feature)
+	if resolvedFeature == "" || *summary == "" {
 		return errors.New("feature-progress requires --feature and --summary")
 	}
 	return safePost("feature-progress", map[string]any{
-		"featureId": *feature,
+		"featureId": resolvedFeature,
 		"status":    normalizeStatus(*status),
 		"summary":   *summary,
 		"evidence":  []string(evidence),
@@ -479,7 +449,7 @@ func handleTestRun(args []string) error {
 		"summary":   *summary,
 		"passed":    *passed,
 		"failed":    *failed,
-		"featureId": *feature,
+		"featureId": featureID(*feature),
 		"taskId":    *task,
 		"agentName": *agent,
 	})
@@ -504,7 +474,7 @@ func handleCodeChanges(args []string) error {
 		"summary":   *summary,
 		"files":     []string(files),
 		"commits":   []string(commits),
-		"featureId": *feature,
+		"featureId": featureID(*feature),
 		"taskId":    *task,
 		"agentName": *agent,
 	})
@@ -536,7 +506,7 @@ func handleTokenUsage(args []string) error {
 		"outputTokens": *outputTokens,
 		"totalTokens":  total,
 		"summary":      *summary,
-		"featureId":    *feature,
+		"featureId":    featureID(*feature),
 		"taskId":       *task,
 	})
 }
@@ -558,7 +528,7 @@ func handleSyncNote(args []string) error {
 		"severity":        *severity,
 		"message":         *message,
 		"suggestedAction": *suggestedAction,
-		"featureId":       *feature,
+		"featureId":       featureID(*feature),
 		"taskId":          *task,
 		"agentName":       *agent,
 	})
@@ -618,47 +588,12 @@ func safeAutoImportDoneMarkdown(candidates []string) error {
 }
 
 func importDoneMarkdown(request doneImportRequest, agentName string) error {
-	config, err := syncConfig()
-	if err != nil {
-		return err
-	}
-	projectID, err := projectIDFromLivingSyncBaseURL(config.LivingSyncBaseURL)
-	if err != nil {
-		return err
-	}
-	payload, err := json.Marshal(map[string]any{
-		"jsonrpc": "2.0",
-		"id":      "living-sync-reporter",
-		"method":  "tools/call",
-		"params": map[string]any{
-			"name": "import_feature_done_markdown",
-			"arguments": map[string]any{
-				"projectId": projectID,
-				"featureId": request.FeatureID,
-				"fileName":  request.FileName,
-				"markdown":  request.Markdown,
-				"agentName": agentName,
-			},
-		},
-	})
-	if err != nil {
-		return err
-	}
-	responseBody, err := postJSON(config.MCPURL, payload, 5*time.Second)
-	if err != nil {
-		return err
-	}
-	var response map[string]any
-	if err := json.Unmarshal(responseBody, &response); err != nil {
-		return err
-	}
-	if errorPayload, ok := response["error"].(map[string]any); ok {
-		if message, ok := errorPayload["message"].(string); ok && message != "" {
-			return errors.New(message)
-		}
-		return errors.New("MCP tool call failed")
-	}
-	return nil
+	return postWithTimeout("feature-done-import", map[string]any{
+		"featureId": request.FeatureID,
+		"fileName":  request.FileName,
+		"markdown":  request.Markdown,
+		"agentName": agentName,
+	}, 5*time.Second)
 }
 
 func collectDoneImports(projectDir string, featureID string, candidates []string, state reporterState) ([]doneImportRequest, error) {
@@ -871,6 +806,13 @@ func commonFlags(fs *flag.FlagSet) (*string, *string) {
 	task := fs.String("task", "", "")
 	agent := fs.String("agent", "claude-code", "")
 	return task, agent
+}
+
+func featureID(flagValue string) string {
+	if value := strings.TrimSpace(flagValue); value != "" {
+		return value
+	}
+	return strings.TrimSpace(os.Getenv("LIVING_SYNC_FEATURE_ID"))
 }
 
 func boolInt(value bool) int {

@@ -1,9 +1,9 @@
 {
   "id": "global.living-sync-reporter",
   "scope": "GLOBAL",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "title": "Living Sync Reporter",
   "description": "Skill und Hook-Skript fuer Product-Spec-Agent Living-Sync Reporting.",
   "createdAt": "2026-05-07T00:00:00Z",
-  "updatedAt": "2026-05-12T00:00:00Z"
+  "updatedAt": "2026-06-17T00:00:00Z"
 }
