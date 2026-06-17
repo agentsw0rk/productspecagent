@@ -11,5 +11,6 @@ RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar --no-daemon
 FROM harbor.eos.netrtl.com/docker/library/eclipse-temurin:21-jre AS prod
 WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
+COPY opentelemetry-javaagent.jar opentelemetry-javaagent.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-javaagent:/app/opentelemetry-javaagent.jar", "-Dotel.exporter.otlp.endpoint=https://signoz-otelcollector.operations-dev-internal.k8s.netrtl.com", "-Dotel.service.name=productspecagent-backend-service", "-Dotel.traces.exporter=otlp", "-Dotel.metrics.exporter=otlp", "-Dotel.logs.exporter=otlp", "-jar", "/app/app.jar"]
