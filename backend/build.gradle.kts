@@ -17,6 +17,8 @@ java {
 }
 
 repositories {
+    maven("https://artifactory.netrtl.com/artifactory/gradle-release")
+    maven("https://artifactory.netrtl.com/artifactory/gradle-plugins")
     mavenCentral()
 }
 
