@@ -49,6 +49,7 @@ agent:
       wizard-blocker-apply: MEDIUM
       acceptance-criteria-proposal: MEDIUM
       feature-proposal: MEDIUM
+      feature-done-import: MEDIUM
       plan-generator: LARGE
       design-summary: MEDIUM
       design-variant: MEDIUM

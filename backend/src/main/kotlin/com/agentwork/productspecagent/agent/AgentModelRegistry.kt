@@ -13,6 +13,7 @@ class AgentModelRegistry(private val properties: AgentModelsProperties) {
             "wizard-blocker-apply",
             "acceptance-criteria-proposal",
             "feature-proposal",
+            "feature-done-import",
             "plan-generator",
             "design-summary",
             "design-variant",

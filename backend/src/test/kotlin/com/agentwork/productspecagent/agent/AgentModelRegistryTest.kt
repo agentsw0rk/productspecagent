@@ -14,6 +14,7 @@ class AgentModelRegistryTest {
         "wizard-blocker-apply" to AgentModelTier.MEDIUM,
         "acceptance-criteria-proposal" to AgentModelTier.MEDIUM,
         "feature-proposal" to AgentModelTier.MEDIUM,
+        "feature-done-import" to AgentModelTier.MEDIUM,
         "plan-generator" to AgentModelTier.LARGE,
         "design-summary" to AgentModelTier.MEDIUM,
         "design-variant" to AgentModelTier.MEDIUM,
@@ -38,6 +39,7 @@ class AgentModelRegistryTest {
             "wizard-blocker-apply",
             "acceptance-criteria-proposal",
             "feature-proposal",
+            "feature-done-import",
             "plan-generator",
             "design-summary",
             "design-variant",
@@ -137,5 +139,13 @@ class AgentModelRegistryTest {
     @Test
     fun `known agents include acceptance criteria proposal`() {
         assertThat(AgentModelRegistry.KNOWN_AGENT_IDS).contains("acceptance-criteria-proposal")
+    }
+
+    @Test
+    fun `known agents include feature done import`() {
+        val reg = AgentModelRegistry(validProps)
+
+        assertThat(AgentModelRegistry.KNOWN_AGENT_IDS).contains("feature-done-import")
+        assertThat(reg.defaultTier("feature-done-import")).isEqualTo(AgentModelTier.MEDIUM)
     }
 }
