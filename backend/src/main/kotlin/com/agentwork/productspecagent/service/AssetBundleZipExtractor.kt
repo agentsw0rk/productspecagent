@@ -16,8 +16,8 @@ import java.util.zip.ZipInputStream
 class AssetBundleZipExtractor {
 
     private val maxFileCount = 200
-    private val maxFileSizeBytes = 4L * 1024 * 1024     // 4 MB per file
-    private val maxTotalSizeBytes = 20L * 1024 * 1024   // 20 MB total
+    private val maxFileSizeBytes = 8L * 1024 * 1024     // 8 MB per file
+    private val maxTotalSizeBytes = 40L * 1024 * 1024   // 40 MB total
 
     private val json = Json { ignoreUnknownKeys = true }
     private val allowedSteps = setOf(FlowStepType.BACKEND, FlowStepType.FRONTEND, FlowStepType.ARCHITECTURE)
@@ -51,7 +51,7 @@ class AssetBundleZipExtractor {
                         val entryBytes = readEntryWithLimit(stream, entry.name)
                         totalBytes += entryBytes.size
                         if (totalBytes > maxTotalSizeBytes) {
-                            throw BundleTooLargeException("Total bundle size exceeds 20 MB")
+                            throw BundleTooLargeException("Total bundle size exceeds ${maxTotalSizeBytes / (1024 * 1024)} MB")
                         }
                         files[entry.name] = entryBytes
                         val nonManifestCount = files.keys.count { it != "manifest.json" }

@@ -210,17 +210,17 @@ class AssetBundleZipExtractorTest {
     }
 
     @Test
-    fun `extract throws BundleTooLargeException for single file over 4 MB`() {
+    fun `extract throws BundleTooLargeException for single file over 8 MB`() {
         val zip = buildZip(
             manifest = sampleManifest(),
-            files = mapOf("skills/big.md" to bytesOfSize(4 * 1024 * 1024 + 1))
+            files = mapOf("skills/big.md" to bytesOfSize(8 * 1024 * 1024 + 1))
         )
         assertThrows(BundleTooLargeException::class.java) { extractor.extract(zip) }
     }
 
     @Test
-    fun `extract throws BundleTooLargeException when total size over 20 MB`() {
-        val files = (1..6).associate { "skills/file-$it.md" to bytesOfSize(4 * 1024 * 1024) }
+    fun `extract throws BundleTooLargeException when total size over 40 MB`() {
+        val files = (1..6).associate { "skills/file-$it.md" to bytesOfSize(7 * 1024 * 1024) }
         val zip = buildZip(manifest = sampleManifest(), files = files)
         assertThrows(BundleTooLargeException::class.java) { extractor.extract(zip) }
     }
