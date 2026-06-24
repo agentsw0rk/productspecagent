@@ -18,20 +18,11 @@ case "$arch" in
 esac
 
 target="$os-$arch"
-gzip_path="$script_dir/$target/living-sync-reporter.gz"
-cache_dir="$script_dir/.cache/$target"
-binary_path="$cache_dir/living-sync-reporter"
+binary_path="$script_dir/$target/living-sync-reporter"
 
-if [ ! -f "$gzip_path" ]; then
-  echo "Missing Living Sync reporter binary: $gzip_path" >&2
+if [ ! -x "$binary_path" ]; then
+  echo "Missing or non-executable Living Sync reporter binary: $binary_path" >&2
   exit 1
-fi
-
-if [ ! -x "$binary_path" ] || [ "$gzip_path" -nt "$binary_path" ]; then
-  mkdir -p "$cache_dir"
-  gzip -dc "$gzip_path" > "$binary_path.tmp"
-  mv "$binary_path.tmp" "$binary_path"
-  chmod +x "$binary_path"
 fi
 
 exec "$binary_path" "$@"

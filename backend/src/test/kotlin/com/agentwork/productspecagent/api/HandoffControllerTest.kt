@@ -340,7 +340,7 @@ class HandoffControllerTest {
             ?: error("Living Sync launcher not found in handoff ZIP")
         val windowsLauncher = readZipEntry(zipBytes) { it == ".asset-bundles/skills/global.living-sync-reporter/living-sync-reporter/bin/living-sync-reporter.cmd" }
             ?: error("Living Sync Windows launcher not found in handoff ZIP")
-        val linuxBinary = readZipEntry(zipBytes) { it == ".asset-bundles/skills/global.living-sync-reporter/living-sync-reporter/bin/linux-amd64/living-sync-reporter.gz" }
+        val linuxBinary = readZipEntry(zipBytes) { it == ".asset-bundles/skills/global.living-sync-reporter/living-sync-reporter/bin/linux-amd64/living-sync-reporter" }
             ?: error("Living Sync Linux binary not found in handoff ZIP")
         val config = readZipEntry(zipBytes) { it == ".asset-bundles/living-sync.json" }
             ?: error("Living Sync config not found in handoff ZIP")
@@ -355,7 +355,7 @@ class HandoffControllerTest {
         assertFalse(skill.contains("/api/v1/projects/$pid/living-sync/mcp"), "Skill should stay static and not embed project-specific endpoint")
         assertTrue(config.contains("/api/v1/projects/$pid/living-sync/mcp"), "Config should embed project-specific endpoint")
         assertTrue(launcher.contains("uname -s"), "Launcher should detect Unix OS")
-        assertTrue(launcher.contains("gzip -dc"), "Launcher should expand compressed Unix binary")
+        assertFalse(launcher.contains("gzip"), "Launcher should execute bundled binaries directly")
         assertTrue(windowsLauncher.contains("windows-amd64"), "Windows launcher should select Windows binary")
         assertTrue(linuxBinary.isNotEmpty(), "Linux binary should be bundled")
         assertTrue(settings.contains("\"PostToolUse\""), "Settings should configure PostToolUse hooks")

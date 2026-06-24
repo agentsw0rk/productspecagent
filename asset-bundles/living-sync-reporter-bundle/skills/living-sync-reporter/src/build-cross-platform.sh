@@ -13,8 +13,6 @@ build() {
   ext="$3"
   out="$bin_dir/$os-$arch/living-sync-reporter$ext"
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags='-s -w' -o "$out" "$script_dir"
-  gzip -9 -c "$out" > "$out.gz"
-  rm "$out"
 }
 
 build linux amd64 ""
