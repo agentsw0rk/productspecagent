@@ -22,7 +22,7 @@ auth:
 
 hackathon:
   lock:
-    enabled: ${HACKATHON_LOCK_ENABLED:true}
+    enabled: ${HACKATHON_LOCK_ENABLED:false}
     title: ${HACKATHON_LOCK_TITLE:Hackathon CVDT}
     event-date: ${HACKATHON_LOCK_EVENT_DATE:2026-06-26}
     target-at: ${HACKATHON_LOCK_TARGET_AT:2026-06-26T09:00:00+02:00}
