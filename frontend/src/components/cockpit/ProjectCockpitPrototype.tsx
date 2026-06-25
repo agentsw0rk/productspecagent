@@ -131,7 +131,6 @@ export function ProjectCockpitPrototype({
           </Link>
           <span className="opacity-50">/</span>
           <span className="truncate text-[13px] font-semibold text-foreground">Projekt-Cockpit</span>
-          <Badge variant="ghost">Prototype</Badge>
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
