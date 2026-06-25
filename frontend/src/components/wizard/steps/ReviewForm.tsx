@@ -59,7 +59,7 @@ function FeatureSummary({ features }: { features: WizardFeature[] }) {
         <div key={feature.id} className="rounded-md border border-border/70 p-3">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold text-foreground">{feature.title || "Unbenanntes Feature"}</h3>
-            {feature.scopes?.map((scope) => (
+            {list(feature.scopes).map((scope) => (
               <Badge key={scope} variant="secondary">{scope}</Badge>
             ))}
           </div>

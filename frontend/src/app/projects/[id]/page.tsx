@@ -270,7 +270,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
             {/* Tab content */}
             <div className="flex-1 overflow-hidden">
               {rightTab === "chat" ? (
-                <ChatPanel projectId={id} />
+                <ChatPanel projectId={id} disableComposer />
               ) : rightTab === "decisions" ? (
                 <DecisionLog projectId={id} />
               ) : rightTab === "clarifications" ? (

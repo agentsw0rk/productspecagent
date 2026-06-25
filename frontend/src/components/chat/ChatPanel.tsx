@@ -9,12 +9,14 @@ import { useProjectStore } from "@/lib/stores/project-store";
 
 interface ChatPanelProps {
   projectId: string;
+  disableComposer?: boolean;
 }
 
-export function ChatPanel({ projectId }: ChatPanelProps) {
+export function ChatPanel({ projectId, disableComposer = false }: ChatPanelProps) {
   const { messages, chatSending, sendMessage } = useProjectStore();
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const composerDisabled = disableComposer || chatSending;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -22,7 +24,7 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
 
   async function handleSend() {
     const text = input.trim();
-    if (!text || chatSending) return;
+    if (!text || composerDisabled) return;
     setInput("");
     await sendMessage(projectId, text);
   }
@@ -49,7 +51,11 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
         {messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
             <Bot size={32} className="opacity-30" />
-            <p className="text-sm">Sag kurz Hallo. Ich fuehre dich durch die naechsten Spec-Schritte.</p>
+            <p className="text-sm">
+              {disableComposer
+                ? "Der Wizard steuert den Agenten. Antworten erscheinen hier automatisch."
+                : "Sag kurz Hallo. Ich fuehre dich durch die naechsten Spec-Schritte."}
+            </p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -73,12 +79,19 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Nachricht an den Agenten... (Enter zum Senden)"
+            placeholder={disableComposer ? "Nachrichten werden vom Wizard erzeugt." : "Nachricht an den Agenten... (Enter zum Senden)"}
             rows={1}
-            disabled={chatSending}
+            disabled={composerDisabled}
             className="flex-1 resize-none border-0 bg-transparent dark:bg-transparent shadow-none focus-visible:ring-0 max-h-32 min-h-[24px] px-0 py-0"
           />
-          <Button size="icon-sm" onClick={handleSend} disabled={!input.trim() || chatSending} className="shrink-0">
+          <Button
+            size="icon-sm"
+            onClick={handleSend}
+            disabled={!input.trim() || composerDisabled}
+            aria-label={disableComposer ? "Manueller Chat ist deaktiviert" : "Nachricht senden"}
+            title={disableComposer ? "Manueller Chat ist deaktiviert" : "Nachricht senden"}
+            className="shrink-0"
+          >
             {chatSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           </Button>
         </div>
