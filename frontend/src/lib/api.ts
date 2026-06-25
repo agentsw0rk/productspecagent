@@ -8,7 +8,7 @@ interface ApiBaseEnv {
   NODE_ENV?: string;
 }
 
-export function resolveApiBase(env: ApiBaseEnv = process.env): string {
+export function resolveApiBase(env: ApiBaseEnv): string {
   const configuredBase = env.NEXT_PUBLIC_API_URL?.trim();
   if (configuredBase) {
     return configuredBase.replace(/\/+$/, "");
@@ -16,7 +16,10 @@ export function resolveApiBase(env: ApiBaseEnv = process.env): string {
   return env.NODE_ENV === "development" ? DEVELOPMENT_API_BASE : "";
 }
 
-export const API_BASE = resolveApiBase();
+export const API_BASE = resolveApiBase({
+  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  NODE_ENV: process.env.NODE_ENV,
+});
 
 let onUnauthorized: (() => void) | null = null;
 

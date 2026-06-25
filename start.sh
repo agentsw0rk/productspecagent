@@ -100,6 +100,7 @@ esac
 export AUTH_JWT_SECRET="${AUTH_JWT_SECRET:-dev-secret-change-me-dev-secret-change-me-dev-secret}"
 export AUTH_ADMIN_EMAILS="${AUTH_ADMIN_EMAILS:-*}"
 export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-dev}"
+export NEXT_PUBLIC_API_URL="http://localhost:8080"
 
 echo "=== LLM Provider: $LLM_PROVIDER ==="
 echo "=== Starting Backend (Spring Boot) ==="
@@ -115,6 +116,7 @@ FRONTEND_PID=$!
 echo ""
 echo "Backend:  http://localhost:8080"
 echo "Frontend: http://localhost:3000"
+echo "API Base: $NEXT_PUBLIC_API_URL"
 echo "MinIO:    http://localhost:9001 (console)"
 echo ""
 echo "Press Ctrl+C to stop services."

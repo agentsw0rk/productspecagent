@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { CockpitLockedNotice } from "@/components/cockpit/CockpitLockedNotice";
 import { ProjectCockpitPrototype } from "@/components/cockpit/ProjectCockpitPrototype";
+import { HandoffDialog } from "@/components/handoff/HandoffDialog";
 import {
   getLivingSyncSummary,
   getProject,
@@ -45,6 +46,8 @@ function ProjectCockpitPageContent({ id }: ProjectCockpitPageContentProps) {
   const [wizardData, setWizardData] = useState<WizardData | null>(null);
   const [livingSyncSummary, setLivingSyncSummary] = useState<LivingSyncSummary | null>(null);
   const [allowedScopes, setAllowedScopes] = useState<FeatureScope[]>(["FRONTEND", "BACKEND"]);
+  const [projectName, setProjectName] = useState("Project");
+  const [showHandoff, setShowHandoff] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +56,7 @@ function ProjectCockpitPageContent({ id }: ProjectCockpitPageContentProps) {
         const response = await getProject(id);
         if (cancelled) return;
 
+        setProjectName(response.project.name);
         setFlowState(response.flowState);
 
         if (isCockpitReady(response.flowState)) {
@@ -148,11 +152,20 @@ function ProjectCockpitPageContent({ id }: ProjectCockpitPageContentProps) {
   }
 
   return (
-    <ProjectCockpitPrototype
-      projectId={id}
-      initialFeatures={cockpitFeatures ?? []}
-      allowedScopes={allowedScopes}
-      onCreateFeature={createFeature}
-    />
+    <>
+      <ProjectCockpitPrototype
+        projectId={id}
+        initialFeatures={cockpitFeatures ?? []}
+        allowedScopes={allowedScopes}
+        onCreateFeature={createFeature}
+        onHandoffClick={() => setShowHandoff(true)}
+      />
+      <HandoffDialog
+        projectId={id}
+        projectName={projectName}
+        open={showHandoff}
+        onClose={() => setShowHandoff(false)}
+      />
+    </>
   );
 }

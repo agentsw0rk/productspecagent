@@ -14,6 +14,7 @@ import {
   LayoutTemplate,
   Plus,
   RefreshCw,
+  Save,
   TestTube2,
   XCircle,
 } from "lucide-react";
@@ -48,6 +49,7 @@ interface ProjectCockpitPrototypeProps {
   initialFeatures: CockpitFeature[];
   allowedScopes: FeatureScope[];
   onCreateFeature: (feature: WizardFeature) => Promise<CockpitFeature[]>;
+  onHandoffClick: () => void;
 }
 
 export function ProjectCockpitPrototype({
@@ -55,6 +57,7 @@ export function ProjectCockpitPrototype({
   initialFeatures,
   allowedScopes,
   onCreateFeature,
+  onHandoffClick,
 }: ProjectCockpitPrototypeProps) {
   const [features, setFeatures] = useState(initialFeatures);
   const [activeId, setActiveId] = useState(initialFeatures[0]?.id ?? "");
@@ -132,6 +135,10 @@ export function ProjectCockpitPrototype({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" onClick={onHandoffClick} className="gap-1.5">
+            <Save size={14} />
+            Handoff
+          </Button>
           <Button size="sm" onClick={captureDesign} disabled={!activeFeature} className="gap-1.5">
             <LayoutTemplate size={14} />
             Design erfassen
