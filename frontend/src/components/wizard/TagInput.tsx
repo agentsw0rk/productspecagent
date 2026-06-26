@@ -29,9 +29,6 @@ export function TagInput({ tags, onAdd, onRemove, placeholder = "Add tag...", co
       onAdd(input.trim());
       setInput("");
     }
-    if (e.key === "Backspace" && !input && tags.length > 0) {
-      onRemove(tags[tags.length - 1]);
-    }
   }
 
   return (
