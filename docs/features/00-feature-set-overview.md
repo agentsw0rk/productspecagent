@@ -65,6 +65,7 @@ Jedes Feature ist eine eigenständige, implementierbare Einheit. Die Reihenfolge
 | 55 | Cockpit Living-Sync-Reporter-Anbindung | [55-cockpit-living-sync-reporter.md](55-cockpit-living-sync-reporter.md) | Feature 45, 51, 53, 54 | S |
 | 56 | Hackathon Lock | [56-hackathon-lock-done.md](56-hackathon-lock-done.md) | Feature 42 | S |
 | 57 | Session-Storage Bearer Auth | [57-session-storage-bearer-auth.md](57-session-storage-bearer-auth.md) | Feature 42 | M |
+| 58 | Wizard Autosave Race Guard | [58-wizard-autosave-race-guard.md](58-wizard-autosave-race-guard.md) | Feature 11 | S |
 
 ## Architecture Docs
 

@@ -69,6 +69,9 @@ export const selectFeatureById = (id: string) => (s: WizardState): WizardFeature
 // ---------------------------------------------------------------------------
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+let editRevision = 0;
+let inFlightSaves = 0;
+let storeGeneration = 0;
 
 export const useWizardStore = create<WizardState>((set, get) => ({
   data: null,
@@ -79,6 +82,13 @@ export const useWizardStore = create<WizardState>((set, get) => ({
   chatPending: false,
 
   loadWizard: async (projectId) => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+    editRevision = 0;
+    inFlightSaves = 0;
+    storeGeneration += 1;
     set({ loading: true });
     try {
       const data = await getWizardData(projectId);
@@ -115,6 +125,7 @@ export const useWizardStore = create<WizardState>((set, get) => ({
   updateField: (step, field, value) => {
     const { data } = get();
     if (!data) return;
+    editRevision += 1;
 
     const stepData = data.steps[step] ?? { fields: {}, completedAt: null };
     const updated: WizardData = {
@@ -142,13 +153,25 @@ export const useWizardStore = create<WizardState>((set, get) => ({
     if (saveTimeout) clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
       const state = get();
+      saveTimeout = null;
       if (state.data) {
         const sd = state.data.steps[step];
         if (sd) {
+          const requestRevision = editRevision;
+          const requestGeneration = storeGeneration;
+          inFlightSaves += 1;
           set({ saving: true });
-          saveWizardStep(data.projectId, step, sd)
-            .then((result) => set({ data: result, saving: false }))
-            .catch(() => set({ saving: false }));
+          saveWizardStep(state.data.projectId, step, sd)
+            .then((result) => {
+              if (requestGeneration === storeGeneration && requestRevision === editRevision) {
+                set({ data: result });
+              }
+            })
+            .catch(() => undefined)
+            .finally(() => {
+              inFlightSaves = Math.max(0, inFlightSaves - 1);
+              set({ saving: inFlightSaves > 0 });
+            });
         }
       }
     }, 500);
@@ -163,14 +186,21 @@ export const useWizardStore = create<WizardState>((set, get) => ({
       clearTimeout(saveTimeout);
       saveTimeout = null;
     }
+    const requestRevision = editRevision;
+    const requestGeneration = storeGeneration;
+    inFlightSaves += 1;
     set({ saving: true });
     try {
       const result = await saveWizardStep(projectId, step, stepData);
-      set({ data: result, saving: false });
+      if (requestGeneration === storeGeneration && requestRevision === editRevision) {
+        set({ data: result });
+      }
       return true;
     } catch {
-      set({ saving: false });
       return false;
+    } finally {
+      inFlightSaves = Math.max(0, inFlightSaves - 1);
+      set({ saving: inFlightSaves > 0 });
     }
   },
 
@@ -484,14 +514,23 @@ export const useWizardStore = create<WizardState>((set, get) => ({
     if (idx > 0) set({ activeStep: steps[idx - 1].key });
   },
 
-  reset: () => set({
-    data: null,
-    progression: null,
-    activeStep: "IDEA",
-    loading: false,
-    saving: false,
-    chatPending: false,
-  }),
+  reset: () => {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
+    editRevision = 0;
+    inFlightSaves = 0;
+    storeGeneration += 1;
+    set({
+      data: null,
+      progression: null,
+      activeStep: "IDEA",
+      loading: false,
+      saving: false,
+      chatPending: false,
+    });
+  },
 
   addFeature: (f) => {
     const id = crypto.randomUUID();
