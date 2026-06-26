@@ -85,7 +85,7 @@ function AcceptanceCriteriaList({
   expanded,
   onToggleExpanded,
 }: AcceptanceCriteriaListProps) {
-  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const inputRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const focusIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -215,23 +215,18 @@ function AcceptanceCriteriaList({
               </div>
 
               <div className="space-y-2">
-                <Input
+                <Textarea
                   id={`ac-text-${c.id}`}
                   aria-label={`Akzeptanzkriterium ${idx + 1}`}
-                  ref={(el: HTMLInputElement | null) => { inputRefs.current[c.id] = el; }}
+                  ref={(el: HTMLTextAreaElement | null) => { inputRefs.current[c.id] = el; }}
                   value={c.text}
                   onChange={(e) => patchText(c.id, e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      appendNew(c.id);
-                    }
-                  }}
-                  className="w-full"
+                  rows={3}
+                  className="w-full resize-y"
                   placeholder="z. B. Aufruf von / ohne Cookie → automatisch redirect zu /login"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Enter fügt direkt darunter ein weiteres Kriterium ein.
+                  Mehrzeiliger Text ist möglich. Der Hinzufügen-Button erstellt ein weiteres Kriterium.
                 </p>
               </div>
 
