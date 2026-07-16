@@ -6,6 +6,7 @@ export interface SeededProject {
   projectId: string;
   email: string;
   password: string;
+  token: string;
 }
 
 /**
@@ -33,9 +34,12 @@ export async function seedSaaSProjectToFeatures(
   if (!registerRes.ok()) {
     throw new Error(`register failed: HTTP ${registerRes.status()} — ${await registerRes.text()}`);
   }
+  const { token } = await registerRes.json() as { token: string };
+  const headers = { Authorization: `Bearer ${token}` };
 
   // Create project — requires both name AND idea (CreateProjectRequest)
   const createRes = await request.post(`${API}/api/v1/projects`, {
+    headers,
     data: {
       name: `e2e-features-${Date.now()}`,
       idea: "E2E smoke-test SaaS project",
@@ -59,6 +63,7 @@ export async function seedSaaSProjectToFeatures(
 
   for (const [step, fields] of steps) {
     const res = await request.put(`${API}/api/v1/projects/${projectId}/wizard/${step}`, {
+      headers,
       data: { fields, completedAt: new Date().toISOString() },
     });
     if (!res.ok()) {
@@ -66,5 +71,5 @@ export async function seedSaaSProjectToFeatures(
     }
   }
 
-  return { projectId, email, password };
+  return { projectId, email, password, token };
 }

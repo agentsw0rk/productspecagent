@@ -46,8 +46,15 @@ class WizardService(private val storage: ProjectStorage) {
         return stepData.copy(fields = stepData.fields + ("features" to normalizedFeatures))
     }
 
-    private fun normalizeFeature(feature: JsonObject): JsonObject =
-        JsonObject(feature + ("scopes" to normalizeScopes(feature["scopes"])))
+    private fun normalizeFeature(feature: JsonObject): JsonObject {
+        val featureId = stringContent(feature["id"]) ?: "feature"
+        return JsonObject(
+            feature + mapOf(
+                "scopes" to normalizeScopes(feature["scopes"]),
+                "acceptanceCriteria" to normalizeAcceptanceCriteria(feature["acceptanceCriteria"], featureId),
+            )
+        )
+    }
 
     private fun normalizeScopes(raw: JsonElement?): JsonArray {
         val scopes = when (raw) {
@@ -63,11 +70,47 @@ class WizardService(private val storage: ProjectStorage) {
     }
 
     private fun scopeName(element: JsonElement): String? =
-        (element as? JsonPrimitive)
-            ?.contentOrNull
+        stringContent(element)
             ?.trim()
             ?.uppercase()
             ?.takeIf { it in scopeNames }
+
+    private fun normalizeAcceptanceCriteria(raw: JsonElement?, featureId: String): JsonArray {
+        val criteria = when (raw) {
+            is JsonArray -> raw
+            is JsonObject, is JsonPrimitive -> listOf(raw)
+            else -> emptyList()
+        }
+        return JsonArray(criteria.mapIndexedNotNull { index, criterion ->
+            normalizeAcceptanceCriterion(criterion, featureId, index)
+        })
+    }
+
+    private fun normalizeAcceptanceCriterion(
+        raw: JsonElement,
+        featureId: String,
+        index: Int,
+    ): JsonObject? {
+        val fallbackId = "$featureId-acceptance-criterion-${index + 1}"
+        if (raw is JsonPrimitive) {
+            return stringContent(raw)?.let { text ->
+                JsonObject(mapOf("id" to JsonPrimitive(fallbackId), "text" to JsonPrimitive(text)))
+            }
+        }
+        if (raw !is JsonObject) return null
+
+        val id = stringContent(raw["id"])?.takeIf { it.isNotBlank() } ?: fallbackId
+        val text = stringContent(raw["text"]) ?: listOfNotNull(
+            stringContent(raw["title"]),
+            stringContent(raw["description"]),
+        ).filter { it.isNotBlank() }.joinToString(": ").takeIf { it.isNotBlank() }
+        return text?.let {
+            JsonObject(mapOf("id" to JsonPrimitive(id), "text" to JsonPrimitive(it)))
+        }
+    }
+
+    private fun stringContent(element: JsonElement?): String? =
+        (element as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
     private companion object {
         val scopeNames = FeatureScope.entries.map { it.name }.toSet()

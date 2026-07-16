@@ -94,4 +94,45 @@ class WizardServiceTest {
         assertTrue(scopes is JsonArray)
         assertEquals(listOf("BACKEND"), (scopes as JsonArray).map { (it as JsonPrimitive).content })
     }
+
+    @Test
+    fun `getWizardData returns string acceptance criteria as an array for legacy data`() {
+        storage.saveWizardData(
+            "project-1",
+            WizardData(
+                projectId = "project-1",
+                steps = mapOf(
+                    "FEATURES" to WizardStepData(
+                        fields = mapOf(
+                            "features" to JsonArray(
+                                listOf(
+                                    JsonObject(
+                                        mapOf(
+                                            "id" to JsonPrimitive("feature-1"),
+                                            "title" to JsonPrimitive("Login"),
+                                            "acceptanceCriteria" to JsonPrimitive("Login succeeds"),
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+            )
+        )
+
+        val loaded = service.getWizardData("project-1")
+
+        val feature = (loaded.steps["FEATURES"]!!.fields["features"] as JsonArray).first() as JsonObject
+        val criteria = feature["acceptanceCriteria"] as JsonArray
+        assertEquals(
+            JsonObject(
+                mapOf(
+                    "id" to JsonPrimitive("feature-1-acceptance-criterion-1"),
+                    "text" to JsonPrimitive("Login succeeds"),
+                )
+            ),
+            criteria.single(),
+        )
+    }
 }

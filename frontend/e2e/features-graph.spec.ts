@@ -90,6 +90,53 @@ test.describe("Feature 22 — Features graph editor", () => {
     ).toEqual([]);
   });
 
+  test("opens a feature whose acceptance criteria are stored as a legacy string", async ({
+    page,
+    request,
+  }) => {
+    const { projectId, email, password, token } = await seedSaaSProjectToFeatures(request);
+    const seedResponse = await request.put(
+      `${process.env.TEST_API_URL ?? "http://localhost:8080"}/api/v1/projects/${projectId}/wizard/FEATURES`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          fields: {
+            features: [
+              {
+                id: "legacy-feature",
+                title: "Legacy feature",
+                scopes: ["FRONTEND"],
+                description: "",
+                scopeFields: {},
+                acceptanceCriteria: "The feature can be selected without an error",
+                position: { x: 80, y: 120 },
+              },
+            ],
+            edges: [],
+          },
+          completedAt: new Date().toISOString(),
+        },
+      },
+    );
+    expect(seedResponse.ok()).toBeTruthy();
+
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await login(page, email, password);
+    await page.goto(`/projects/${projectId}`);
+    await openFeaturesStep(page);
+    await page.locator('[data-testid="node"]').dblclick();
+
+    await expect(page.getByRole("dialog", { name: /Feature bearbeiten/i })).toBeVisible();
+    await expect(page.getByText("1 AC", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Akzeptanzkriterien ausklappen" }).click();
+    await expect(page.getByLabel("Akzeptanzkriterium 1")).toHaveValue(
+      "The feature can be selected without an error",
+    );
+    expect(pageErrors).toEqual([]);
+  });
+
   test("auto-layout persists updated feature coordinates immediately", async ({
     page,
     request,
