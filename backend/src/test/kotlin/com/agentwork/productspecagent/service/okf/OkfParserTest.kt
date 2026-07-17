@@ -6,6 +6,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class OkfParserTest {
 
@@ -67,6 +70,8 @@ class OkfParserTest {
         }
 
         assertEquals("duplicate.md", exception.documentPath)
+        assertTrue(exception.message.orEmpty().startsWith("duplicate.md:"))
+        assertTrue(exception.message.orEmpty().contains("duplicate key", ignoreCase = true))
     }
 
     @Test
@@ -74,9 +79,14 @@ class OkfParserTest {
         val aliases = (1..21).joinToString("\n") { index -> "alias$index: *shared" }
         val content = "---\nshared: &shared\n  - value\n$aliases\n---\nBody"
 
-        assertThrows<OkfParseException> {
+        val exception = assertThrows<OkfParseException> {
             parser.parse("aliases.md", content)
         }
+
+        assertEquals("aliases.md", exception.documentPath)
+        assertTrue(exception.message.orEmpty().startsWith("aliases.md:"))
+        assertTrue(exception.message.orEmpty().contains("aliases", ignoreCase = true))
+        assertTrue(exception.message.orEmpty().contains("20"))
     }
 
     @Test
@@ -108,5 +118,44 @@ class OkfParserTest {
         assertEquals(listOf("type", "x-producer", "title"), reparsed.frontmatter.keys.toList())
         assertEquals(linkedMapOf("enabled" to true), reparsed.frontmatter["x-producer"])
         assertEquals(original.body, reparsed.body)
+    }
+
+    @Test
+    fun `parse and render remain deterministic under concurrent use`() {
+        val executor = Executors.newFixedThreadPool(12)
+        val start = CountDownLatch(1)
+
+        try {
+            val results = (0 until 12).map { worker ->
+                executor.submit<Throwable?> {
+                    start.await()
+                    runCatching {
+                        repeat(250) { iteration ->
+                            val value = "$worker-$iteration"
+                            val path = "concepts/$value.md"
+                            val body = "# Body\n\n$value"
+                            val parsed = parser.parse(
+                                path,
+                                "---\ntype: Reference\nx-value: $value\n---\n$body",
+                            )
+
+                            assertEquals(value, parsed.frontmatter["x-value"])
+                            val reparsed = parser.parse(path, parser.render(parsed))
+                            assertEquals(value, reparsed.frontmatter["x-value"])
+                            assertEquals(body, reparsed.body)
+                        }
+                    }.exceptionOrNull()
+                }
+            }
+
+            start.countDown()
+            val failures = results.mapNotNull { it.get(30, TimeUnit.SECONDS) }
+            assertTrue(
+                failures.isEmpty(),
+                failures.joinToString("\n") { "${it::class.qualifiedName}: ${it.message}" },
+            )
+        } finally {
+            executor.shutdownNow()
+        }
     }
 }

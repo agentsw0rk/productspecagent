@@ -12,30 +12,6 @@ import org.yaml.snakeyaml.representer.Representer
 @Service
 class OkfParser {
 
-    private val loaderOptions = LoaderOptions().apply {
-        maxAliasesForCollections = 20
-        nestingDepthLimit = 40
-        codePointLimit = 1_000_000
-        isAllowDuplicateKeys = false
-        allowRecursiveKeys = false
-    }
-
-    private val dumperOptions = DumperOptions().apply {
-        defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
-        isPrettyFlow = true
-        indent = 2
-        indicatorIndent = 2
-        indentWithIndicator = true
-        width = 120
-    }
-
-    private val yaml = Yaml(
-        SafeConstructor(loaderOptions),
-        Representer(dumperOptions),
-        dumperOptions,
-        loaderOptions,
-    )
-
     fun parse(path: String, content: String): OkfDocument {
         val normalized = content.replace("\r\n", "\n").replace('\r', '\n')
         if (!normalized.startsWith("---\n")) {
@@ -48,9 +24,10 @@ class OkfParser {
         }
 
         val loaded = try {
-            yaml.load<Any?>(normalized.substring(4, closingDelimiter))
+            createYaml().load<Any?>(normalized.substring(4, closingDelimiter))
         } catch (exception: Exception) {
-            throw OkfParseException(path, "invalid YAML frontmatter", exception)
+            val message = exception.message?.takeIf { it.isNotBlank() } ?: "invalid YAML frontmatter"
+            throw OkfParseException(path, message, exception)
         }
 
         if (loaded !is Map<*, *>) {
@@ -74,9 +51,33 @@ class OkfParser {
             return document.body
         }
 
-        val dumped = yaml.dump(document.frontmatter)
+        val dumped = createYaml().dump(document.frontmatter)
             .removeSuffix("...\n")
             .trimEnd()
         return "---\n$dumped\n---\n${document.body}"
+    }
+
+    private fun createYaml(): Yaml {
+        val loaderOptions = LoaderOptions().apply {
+            maxAliasesForCollections = 20
+            nestingDepthLimit = 40
+            codePointLimit = 1_000_000
+            isAllowDuplicateKeys = false
+            allowRecursiveKeys = false
+        }
+        val dumperOptions = DumperOptions().apply {
+            defaultFlowStyle = DumperOptions.FlowStyle.BLOCK
+            isPrettyFlow = true
+            indent = 2
+            indicatorIndent = 2
+            indentWithIndicator = true
+            width = 120
+        }
+        return Yaml(
+            SafeConstructor(loaderOptions),
+            Representer(dumperOptions),
+            dumperOptions,
+            loaderOptions,
+        )
     }
 }
