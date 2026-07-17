@@ -38,6 +38,11 @@ dependencies {
     // Mustache templating
     implementation("com.github.spullara.mustache.java:compiler:0.9.14")
 
+    // OKF parsing and Git synchronization
+    implementation("org.yaml:snakeyaml")
+    implementation("org.commonmark:commonmark:0.28.0")
+    implementation("org.eclipse.jgit:org.eclipse.jgit:7.6.0.202603022253-r")
+
     // AWS S3
     implementation(platform("software.amazon.awssdk:bom:2.30.4"))
     implementation("software.amazon.awssdk:s3")
