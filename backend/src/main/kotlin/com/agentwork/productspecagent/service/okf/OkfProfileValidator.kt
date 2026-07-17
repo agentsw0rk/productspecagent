@@ -24,7 +24,7 @@ class OkfProfileValidator {
         val ids = mutableMapOf<UUID, String>()
 
         for (document in bundle.documents) {
-            if (document.path != INDEX_PATH) {
+            if (!isIndexDocument(document.path)) {
                 validatePath(document, issues)
                 validateFrontmatter(document, ids, issues)
             }
@@ -32,6 +32,11 @@ class OkfProfileValidator {
         }
 
         return issues
+    }
+
+    private fun isIndexDocument(path: String): Boolean {
+        val normalized = normalizedBundlePath(path) ?: return false
+        return Path.of(normalized).fileName?.toString() == INDEX_FILENAME
     }
 
     private fun validatePath(document: OkfDocument, issues: MutableList<OkfIssue>) {
@@ -225,7 +230,7 @@ class OkfProfileValidator {
         OkfIssue(OkfIssueSeverity.ERROR, path, field, message)
 
     private companion object {
-        const val INDEX_PATH = "index.md"
+        const val INDEX_FILENAME = "index.md"
         const val CITATIONS_HEADING = "Citations"
         val REQUIRED_FIELDS = listOf("type", "id", "title", "description", "tags", "timestamp")
         val KNOWN_TYPES = setOf(

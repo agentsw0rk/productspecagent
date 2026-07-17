@@ -280,6 +280,24 @@ class OkfProfileValidatorTest {
         assertIssue(issues, OkfIssueSeverity.WARNING, path = "index.md", field = "link")
     }
 
+    @Test
+    fun `nested index documents validate links only`() {
+        val index = OkfDocument(
+            path = "architecture/index.md",
+            frontmatter = linkedMapOf(),
+            body = "[Existing](overview.md)\n[Missing](missing.md)",
+        )
+        val target = document(
+            path = "architecture/overview.md",
+            id = "00000000-0000-0000-0000-000000000301",
+        )
+
+        val issues = validator.validate(OkfBundle(listOf(index, target)))
+
+        assertEquals(1, issues.size)
+        assertIssue(issues, OkfIssueSeverity.WARNING, path = "architecture/index.md", field = "link")
+    }
+
     private fun validate(document: OkfDocument): List<OkfIssue> =
         validator.validate(OkfBundle(listOf(document)))
 
