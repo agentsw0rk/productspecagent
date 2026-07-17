@@ -33,6 +33,7 @@ s3-creds.txt
 # Superpowers (visual companion mockups, brainstorming sessions)
 .superpowers/
 docs/superpowers/
+.worktrees/
 
 # Asset bundles (zips are build artifacts of build-bundles.sh)
 asset-bundles/*.zip
