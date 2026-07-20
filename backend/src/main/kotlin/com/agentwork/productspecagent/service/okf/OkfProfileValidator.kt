@@ -186,14 +186,15 @@ class OkfProfileValidator {
 
     private fun resolveRelativeTarget(sourcePath: String, destination: URI): String? {
         if (destination.rawAuthority != null) return null
+        val normalizedSource = normalizedBundlePath(sourcePath) ?: return null
         val decodedPath = destination.path ?: return null
-        if (decodedPath.isBlank() || decodedPath.contains('\\')) return null
+        if (decodedPath.isBlank()) return normalizedSource
+        if (decodedPath.contains('\\')) return null
 
         return try {
             val destinationPath = Path.of(decodedPath)
             if (destinationPath.isAbsolute) return null
 
-            val normalizedSource = normalizedBundlePath(sourcePath) ?: return null
             val sourceParent = Path.of(normalizedSource).parent ?: Path.of("")
             val target = sourceParent.resolve(destinationPath).normalize()
             if (target.isAbsolute || target.startsWith("..")) null else target.toBundlePath()
@@ -203,7 +204,7 @@ class OkfProfileValidator {
     }
 
     private fun normalizedBundlePath(path: String): String? {
-        if (path.isBlank() || path.contains('\\')) return null
+        if (path.isBlank() || path.contains('\\') || WINDOWS_ABSOLUTE_PATH.containsMatchIn(path)) return null
 
         return try {
             val parsed = Path.of(path)
@@ -258,6 +259,7 @@ class OkfProfileValidator {
             "architecture-constraint",
         )
         val HTTP_SCHEMES = setOf("http", "https")
+        val WINDOWS_ABSOLUTE_PATH = Regex("^[A-Za-z]:/")
         val DESCRIPTION_ENDINGS = setOf('.', '!', '?')
     }
 }

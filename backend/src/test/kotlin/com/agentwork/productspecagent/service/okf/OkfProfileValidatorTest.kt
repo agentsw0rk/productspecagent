@@ -203,6 +203,26 @@ class OkfProfileValidatorTest {
     }
 
     @Test
+    fun `windows absolute index paths do not bypass profile validation`() {
+        val index = OkfDocument(
+            path = "C:/index.md",
+            frontmatter = linkedMapOf(),
+            body = "# Index",
+        )
+
+        val issues = validate(index)
+
+        assertIssue(
+            issues,
+            OkfIssueSeverity.ERROR,
+            path = "C:/index.md",
+            field = "path",
+            message = "document path is not a safe normalized bundle path",
+        )
+        assertIssue(issues, OkfIssueSeverity.ERROR, path = "C:/index.md", field = "type")
+    }
+
+    @Test
     fun `accepts existing relative links after stripping fragments`() {
         val source = document(
             path = "concepts/source.md",
@@ -233,6 +253,18 @@ class OkfProfileValidatorTest {
         )
 
         val issues = validator.validate(OkfBundle(listOf(source, target)))
+
+        assertTrue(issues.none { it.path == source.path && it.field == "link" })
+    }
+
+    @Test
+    fun `fragment-only and query-only links resolve to the source document`() {
+        val source = document(
+            path = "concepts/source.md",
+            body = "[Fragment](#details)\n[Query](?view=full)",
+        )
+
+        val issues = validate(source)
 
         assertTrue(issues.none { it.path == source.path && it.field == "link" })
     }
