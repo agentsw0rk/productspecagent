@@ -54,6 +54,7 @@ export S3_ACCESS_KEY="minioadmin"
 export S3_SECRET_KEY="minioadmin"
 export S3_PATH_STYLE="true"
 export S3_REGION="us-east-1"
+export OKF_GIT_ALLOW_FILE_REMOTES="${OKF_GIT_ALLOW_FILE_REMOTES:-true}"
 
 # Claude / proxy example values:
 # export https_proxy="http://meta-proxy.netrtl.com:8080"

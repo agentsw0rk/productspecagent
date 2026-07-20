@@ -82,6 +82,13 @@ feature-proposal:
     max-bytes-per-file: ${FEATURE_PROPOSAL_UPLOAD_MAX_BYTES_PER_FILE:102400}
     max-bytes-total: ${FEATURE_PROPOSAL_UPLOAD_MAX_BYTES_TOTAL:512000}
 
+okf:
+  git:
+    worktree-root: ${OKF_GIT_WORKTREE_ROOT:data/okf-worktrees}
+    username: ${OKF_GIT_USERNAME:oauth2}
+    token: ${OKF_GIT_TOKEN:}
+    allow-file-remotes: ${OKF_GIT_ALLOW_FILE_REMOTES:false}
+
 design:
   bundle:
     max-zip-bytes: ${DESIGN_BUNDLE_MAX_ZIP_BYTES:5242880}
