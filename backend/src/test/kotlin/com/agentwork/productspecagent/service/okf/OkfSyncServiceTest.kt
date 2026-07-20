@@ -393,10 +393,12 @@ class OkfSyncServiceTest {
             fixture.service.approve(PROJECT_ID, CHANGESET_ID)
         }
         assertEquals("c2", fixture.stateStorage.loadPendingChangeset(PROJECT_ID)?.approvedCommit)
+        assertEquals("2026-07-20T12:00:00Z", fixture.stateStorage.loadPendingChangeset(PROJECT_ID)?.updatedAt)
 
         val approved = fixture.service.approve(PROJECT_ID, CHANGESET_ID)
 
         assertEquals("c2", approved.approvedCommit)
+        assertEquals("2026-07-20T12:00:00Z", approved.updatedAt)
         verify(fixture.git, times(1)).commitAndPush(eq(PROJECT_ID), eq(CONNECTION), eq("c1"), any(), any())
     }
 

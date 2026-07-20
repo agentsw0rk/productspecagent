@@ -218,7 +218,7 @@ class OkfSyncService(
                 message = "docs(okf): approve changeset ${pending.id}",
             ).also { pushed ->
                 stateStorage.savePendingChangeset(
-                    pending.copy(approvedCommit = pushed.commit, updatedAt = now()),
+                    pending.copy(approvedCommit = pushed.commit),
                 )
             }
         } catch (exception: OkfGitException) {
@@ -231,7 +231,7 @@ class OkfSyncService(
                 }
                 if (advanced.files == targetFiles) {
                     stateStorage.savePendingChangeset(
-                        pending.copy(approvedCommit = advanced.commit, updatedAt = now()),
+                        pending.copy(approvedCommit = advanced.commit),
                     )
                     OkfGitCommitResult(advanced.commit, advanced.branch)
                 } else {
