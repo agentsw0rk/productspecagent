@@ -55,6 +55,32 @@ class OkfProfileValidatorTest {
     }
 
     @Test
+    fun `rejects noncanonical shortened UUID values`() {
+        val issues = validate(document(id = "1-1-1-1-1"))
+
+        assertIssue(issues, OkfIssueSeverity.ERROR, field = "id", message = "id must be a valid UUID")
+    }
+
+    @Test
+    fun `requires canonical UUID text while accepting canonical uppercase`() {
+        val shortenedIssues = validate(document(id = "1-1-1-1-1"))
+        val uppercaseIssues = validate(
+            document(
+                path = "concepts/uppercase.md",
+                id = "BE8F64A8-4BD0-4FD6-9E57-F1A69F25D103",
+            ),
+        )
+
+        assertIssue(
+            shortenedIssues,
+            OkfIssueSeverity.ERROR,
+            field = "id",
+            message = "id must be a valid UUID",
+        )
+        assertTrue(uppercaseIssues.none { it.field == "id" })
+    }
+
+    @Test
     fun `requires ids tags and timestamps to have their profile types`() {
         val frontmatter = validFrontmatter().apply {
             this["id"] = 123
@@ -180,7 +206,10 @@ class OkfProfileValidatorTest {
     fun `accepts existing relative links after stripping fragments`() {
         val source = document(
             path = "concepts/source.md",
-            body = "[Target](../architecture/target.md#details)",
+            body = """
+                [Fragment](../architecture/target.md#details)
+                [Query](../architecture/target.md?view=details)
+            """.trimIndent(),
         )
         val target = document(
             path = "architecture/target.md",
@@ -193,10 +222,67 @@ class OkfProfileValidatorTest {
     }
 
     @Test
+    fun `accepts safe relative links with a query`() {
+        val source = document(
+            path = "concepts/source.md",
+            body = "[Target](../architecture/target.md?view=full#details)",
+        )
+        val target = document(
+            path = "architecture/target.md",
+            id = "00000000-0000-0000-0000-000000000202",
+        )
+
+        val issues = validator.validate(OkfBundle(listOf(source, target)))
+
+        assertTrue(issues.none { it.path == source.path && it.field == "link" })
+    }
+
+    @Test
+    fun `decodes internal URI paths before enforcing bundle containment`() {
+        val source = document(
+            path = "concepts/source.md",
+            body = """
+                [Encoded dots](%2e%2e/%2e%2e/secret.md)
+                [Encoded separators](%2e%2e%2F%2e%2e%2Fsecret.md)
+            """.trimIndent(),
+        )
+
+        val issues = validate(source)
+
+        assertEquals(
+            2,
+            issues.count {
+                it.severity == OkfIssueSeverity.ERROR &&
+                    it.field == "link" &&
+                    it.message == "link target is not a safe normalized bundle path"
+            },
+        )
+        assertTrue(issues.none { it.severity == OkfIssueSeverity.WARNING && it.field == "link" })
+    }
+
+    @Test
     fun `reports links that escape the bundle as errors`() {
         val source = document(
             path = "concepts/source.md",
             body = "[Secret](../../secret.md)",
+        )
+
+        val issues = validate(source)
+
+        assertIssue(
+            issues,
+            OkfIssueSeverity.ERROR,
+            path = source.path,
+            field = "link",
+            message = "link target is not a safe normalized bundle path",
+        )
+    }
+
+    @Test
+    fun `reports percent encoded traversal as an error`() {
+        val source = document(
+            path = "concepts/source.md",
+            body = "[Secret](%2e%2e/%2e%2e/secret.md)",
         )
 
         val issues = validate(source)

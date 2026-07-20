@@ -10,6 +10,8 @@ import org.commonmark.node.Link
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.text.TextContentRenderer
 import org.springframework.stereotype.Service
+import java.net.URI
+import java.net.URISyntaxException
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.time.OffsetDateTime
@@ -22,13 +24,14 @@ class OkfProfileValidator {
     fun validate(bundle: OkfBundle): List<OkfIssue> {
         val issues = mutableListOf<OkfIssue>()
         val ids = mutableMapOf<UUID, String>()
+        val bundlePaths = bundle.documents.mapNotNull { normalizedBundlePath(it.path) }.toSet()
 
         for (document in bundle.documents) {
             if (!isIndexDocument(document.path)) {
                 validatePath(document, issues)
                 validateFrontmatter(document, ids, issues)
             }
-            validateLinks(document, bundle.byPath.keys, issues)
+            validateLinks(document, bundlePaths, issues)
         }
 
         return issues
@@ -135,7 +138,7 @@ class OkfProfileValidator {
             override fun visit(link: Link) {
                 validateLink(
                     document = document,
-                    destination = link.destination.substringBefore('#'),
+                    destination = link.destination,
                     inCitations = currentLevelTwoHeading == CITATIONS_HEADING,
                     bundlePaths = bundlePaths,
                     issues = issues,
@@ -154,15 +157,21 @@ class OkfProfileValidator {
     ) {
         if (destination.isBlank()) return
 
-        val scheme = URI_SCHEME.find(destination)?.groupValues?.get(1)
+        val uri = try {
+            URI(destination)
+        } catch (_: URISyntaxException) {
+            issues += error(document.path, "link", "link target is not a safe normalized bundle path")
+            return
+        }
+        val scheme = uri.scheme?.lowercase()
         if (scheme != null) {
-            if (scheme.lowercase() !in HTTP_SCHEMES || !inCitations) {
+            if (scheme !in HTTP_SCHEMES || !inCitations) {
                 issues += error(document.path, "link", "external links are allowed only in Citations")
             }
             return
         }
 
-        val target = resolveRelativeTarget(document.path, destination)
+        val target = resolveRelativeTarget(document.path, uri)
         if (target == null) {
             issues += error(document.path, "link", "link target is not a safe normalized bundle path")
         } else if (target !in bundlePaths) {
@@ -175,16 +184,19 @@ class OkfProfileValidator {
         }
     }
 
-    private fun resolveRelativeTarget(sourcePath: String, destination: String): String? {
-        if (destination.contains('\\')) return null
+    private fun resolveRelativeTarget(sourcePath: String, destination: URI): String? {
+        if (destination.rawAuthority != null) return null
+        val decodedPath = destination.path ?: return null
+        if (decodedPath.isBlank() || decodedPath.contains('\\')) return null
 
         return try {
-            val destinationPath = Path.of(destination)
+            val destinationPath = Path.of(decodedPath)
             if (destinationPath.isAbsolute) return null
 
-            val sourceParent = Path.of(sourcePath).parent ?: Path.of("")
+            val normalizedSource = normalizedBundlePath(sourcePath) ?: return null
+            val sourceParent = Path.of(normalizedSource).parent ?: Path.of("")
             val target = sourceParent.resolve(destinationPath).normalize()
-            if (target.isAbsolute || target.startsWith("..")) null else target.toString()
+            if (target.isAbsolute || target.startsWith("..")) null else target.toBundlePath()
         } catch (_: InvalidPathException) {
             null
         }
@@ -196,11 +208,14 @@ class OkfProfileValidator {
         return try {
             val parsed = Path.of(path)
             val normalized = parsed.normalize()
-            if (parsed.isAbsolute || normalized.startsWith("..") || normalized.toString() != path) null else path
+            val canonical = normalized.toBundlePath()
+            if (parsed.isAbsolute || normalized.startsWith("..") || canonical != path) null else canonical
         } catch (_: InvalidPathException) {
             null
         }
     }
+
+    private fun Path.toBundlePath(): String = iterator().asSequence().joinToString("/") { it.toString() }
 
     private fun isValidDescription(description: String?): Boolean =
         description != null &&
@@ -221,7 +236,7 @@ class OkfProfileValidator {
     }
 
     private fun parseUuid(value: String): UUID? = try {
-        UUID.fromString(value)
+        UUID.fromString(value).takeIf { it.toString().equals(value, ignoreCase = true) }
     } catch (_: IllegalArgumentException) {
         null
     }
@@ -243,7 +258,6 @@ class OkfProfileValidator {
             "architecture-constraint",
         )
         val HTTP_SCHEMES = setOf("http", "https")
-        val URI_SCHEME = Regex("^([A-Za-z][A-Za-z0-9+.-]*):")
         val DESCRIPTION_ENDINGS = setOf('.', '!', '?')
     }
 }
