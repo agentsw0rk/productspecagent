@@ -12,6 +12,11 @@ data class OkfDocument(
 data class OkfBundle(
     val documents: List<OkfDocument>,
 ) {
+    init {
+        val duplicatePath = documents.groupingBy { it.path }.eachCount().entries.firstOrNull { it.value > 1 }?.key
+        require(duplicatePath == null) { "duplicate OKF document path: $duplicatePath" }
+    }
+
     val byPath: Map<String, OkfDocument> = documents.associateBy { it.path }
 }
 
