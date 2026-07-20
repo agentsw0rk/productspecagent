@@ -6,6 +6,7 @@ import com.agentwork.productspecagent.service.okf.OkfParser
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.springframework.stereotype.Service
+import java.nio.file.Path
 
 @Service
 class OkfProjectionStorage(
@@ -16,32 +17,39 @@ class OkfProjectionStorage(
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
     fun replaceRawBundle(projectId: String, bundle: OkfBundle) {
-        val renderedDocuments = bundle.documents.map { document ->
+        val files = bundle.documents.associate { document ->
             require(document.path.startsWith(RAW_BUNDLE_PATH_PREFIX)) {
                 "OKF document path must be below $RAW_BUNDLE_PATH_PREFIX: ${document.path}"
             }
-            require(document.path.split('/').none { it == ".." }) {
-                "OKF document path must not contain parent traversal: ${document.path}"
-            }
-            document.path to parser.render(document).toByteArray()
+            document.path.removePrefix(RAW_BUNDLE_PATH_PREFIX) to parser.render(document)
+        }
+        replaceRawFiles(projectId, files)
+    }
+
+    fun replaceRawFiles(projectId: String, files: Map<String, String>) {
+        val encodedFiles = files.map { (path, content) ->
+            validateRelativePath(path) to content.toByteArray()
         }
 
         objectStore.deletePrefix(rawBundlePrefix(projectId))
-        renderedDocuments.forEach { (path, content) ->
+        encodedFiles.forEach { (path, content) ->
             objectStore.put(
-                "projects/$projectId/$path",
+                "${rawBundlePrefix(projectId)}$path",
                 content,
                 "text/markdown",
             )
         }
     }
 
+    fun loadRawFiles(projectId: String): Map<String, String> =
+        objectStore.listKeys(rawBundlePrefix(projectId)).associate { key ->
+            key.removePrefix(rawBundlePrefix(projectId)) to
+                objectStore.get(key)!!.toString(Charsets.UTF_8)
+        }
+
     fun loadRawBundle(projectId: String): OkfBundle {
-        val projectPrefix = "projects/$projectId/"
-        val documents = objectStore.listKeys(rawBundlePrefix(projectId)).mapNotNull { key ->
-            objectStore.get(key)?.toString(Charsets.UTF_8)?.let { content ->
-                parser.parse(key.removePrefix(projectPrefix), content)
-            }
+        val documents = loadRawFiles(projectId).map { (path, content) ->
+            parser.parse("$RAW_BUNDLE_PATH_PREFIX$path", content)
         }
         return OkfBundle(documents)
     }
@@ -64,5 +72,14 @@ class OkfProjectionStorage(
 
     private companion object {
         const val RAW_BUNDLE_PATH_PREFIX = "docs/okf/"
+    }
+
+    private fun validateRelativePath(path: String): String {
+        require(path.isNotBlank() && !path.contains('\\')) { "invalid OKF file path: $path" }
+        val parsed = Path.of(path)
+        require(!parsed.isAbsolute && parsed.none { it.toString() == ".." }) { "invalid OKF file path: $path" }
+        val normalized = parsed.normalize().toString().replace('\\', '/')
+        require(normalized == path && normalized != ".") { "invalid OKF file path: $path" }
+        return normalized
     }
 }

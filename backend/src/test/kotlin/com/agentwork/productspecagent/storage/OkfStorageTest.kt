@@ -155,6 +155,18 @@ class OkfStorageTest {
     }
 
     @Test
+    fun `raw files remain inspectable when frontmatter cannot be parsed`() {
+        val objectStore = InMemoryObjectStore()
+        val storage = OkfProjectionStorage(objectStore, OkfParser())
+        val invalid = "---\ntype: [unterminated\n---\n# Invalid\n"
+
+        storage.replaceRawFiles("p1", mapOf("features/invalid.md" to invalid))
+
+        assertEquals(mapOf("features/invalid.md" to invalid), storage.loadRawFiles("p1"))
+        assertThrows(RuntimeException::class.java) { storage.loadRawBundle("p1") }
+    }
+
+    @Test
     fun `feature projection roundtrips`() {
         val storage = OkfProjectionStorage(InMemoryObjectStore(), OkfParser())
         val graph = WizardFeatureGraph(features = listOf(WizardFeature(id = "feature-1", title = "First")))
