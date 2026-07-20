@@ -49,10 +49,27 @@ class OkfStateStorage(private val objectStore: ObjectStore) {
         readJson(approvedChangesetKey(projectId, changesetId))
 
     fun saveConflict(projectId: String, conflict: OkfConflict) {
-        putJson(conflictKey(projectId), json.encodeToString(conflict))
+        saveConflicts(projectId, listOf(conflict))
     }
 
-    fun loadConflict(projectId: String): OkfConflict? = readJson(conflictKey(projectId))
+    fun saveConflicts(projectId: String, conflicts: List<OkfConflict>) {
+        if (conflicts.isEmpty()) {
+            deleteConflict(projectId)
+        } else {
+            putJson(conflictKey(projectId), json.encodeToString(conflicts))
+        }
+    }
+
+    fun loadConflicts(projectId: String): List<OkfConflict> {
+        val content = objectStore.get(conflictKey(projectId))?.toString(Charsets.UTF_8) ?: return emptyList()
+        return try {
+            json.decodeFromString<List<OkfConflict>>(content)
+        } catch (_: Exception) {
+            listOf(json.decodeFromString<OkfConflict>(content))
+        }
+    }
+
+    fun loadConflict(projectId: String): OkfConflict? = loadConflicts(projectId).firstOrNull()
 
     fun deleteConflict(projectId: String) {
         objectStore.delete(conflictKey(projectId))

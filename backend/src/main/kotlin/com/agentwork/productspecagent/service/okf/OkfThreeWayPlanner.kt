@@ -13,7 +13,10 @@ data class OkfMergePlan(
 )
 
 @Service
-class OkfThreeWayPlanner(private val featureCodec: OkfFeatureCodec) {
+class OkfThreeWayPlanner(
+    private val featureCodec: OkfFeatureCodec,
+    private val parser: OkfParser = OkfParser(),
+) {
 
     fun plan(base: OkfBundle, remote: OkfBundle, proposed: OkfBundle): OkfMergePlan {
         val baseById = conceptsByIdentity(base)
@@ -68,7 +71,7 @@ class OkfThreeWayPlanner(private val featureCodec: OkfFeatureCodec) {
                     path = document.path,
                     baseContent = null,
                     remoteContent = null,
-                    proposedContent = document.body,
+                    proposedContent = parser.render(document),
                 )
             }
         }
@@ -82,9 +85,9 @@ class OkfThreeWayPlanner(private val featureCodec: OkfFeatureCodec) {
         changesetId = "",
         documentId = documentId(identity),
         path = proposed?.path ?: remote?.path ?: requireNotNull(base).path,
-        baseContent = base?.body,
-        remoteContent = remote?.body,
-        proposedContent = proposed?.body,
+        baseContent = base?.let(parser::render),
+        remoteContent = remote?.let(parser::render),
+        proposedContent = proposed?.let(parser::render),
     )
 
     private fun identity(document: OkfDocument): String =

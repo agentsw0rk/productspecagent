@@ -22,6 +22,8 @@ class OkfThreeWayPlannerTest {
 
         assertNull(result.merged)
         assertEquals(listOf(LOGIN_ID), result.conflicts.mapNotNull { it.documentId })
+        assertTrue(result.conflicts.single().baseContent!!.contains("id: $LOGIN_ID"))
+        assertTrue(result.conflicts.single().remoteContent!!.contains("remote"))
     }
 
     @Test

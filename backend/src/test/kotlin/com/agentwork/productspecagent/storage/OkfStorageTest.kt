@@ -106,6 +106,18 @@ class OkfStorageTest {
     }
 
     @Test
+    fun `multiple current conflicts retain their review order`() {
+        val storage = OkfStateStorage(InMemoryObjectStore())
+        val first = OkfConflict("c1", "feature-1", "features/first.md", "base", "remote", "local")
+        val second = OkfConflict("c1", "feature-2", "features/second.md", "base", "remote", "local")
+
+        storage.saveConflicts("p1", listOf(first, second))
+
+        assertEquals(listOf(first, second), storage.loadConflicts("p1"))
+        assertEquals(first, storage.loadConflict("p1"))
+    }
+
+    @Test
     fun `raw bundle replacement deletes only the OKF bundle prefix`() {
         val objectStore = InMemoryObjectStore()
         val storage = OkfProjectionStorage(objectStore, OkfParser())
