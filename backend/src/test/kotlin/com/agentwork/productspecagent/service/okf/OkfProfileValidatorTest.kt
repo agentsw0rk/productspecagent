@@ -55,13 +55,6 @@ class OkfProfileValidatorTest {
     }
 
     @Test
-    fun `rejects noncanonical shortened UUID values`() {
-        val issues = validate(document(id = "1-1-1-1-1"))
-
-        assertIssue(issues, OkfIssueSeverity.ERROR, field = "id", message = "id must be a valid UUID")
-    }
-
-    @Test
     fun `requires canonical UUID text while accepting canonical uppercase`() {
         val shortenedIssues = validate(document(id = "1-1-1-1-1"))
         val uppercaseIssues = validate(
@@ -203,23 +196,24 @@ class OkfProfileValidatorTest {
     }
 
     @Test
-    fun `windows absolute index paths do not bypass profile validation`() {
-        val index = OkfDocument(
-            path = "C:/index.md",
-            frontmatter = linkedMapOf(),
-            body = "# Index",
+    fun `windows drive index paths do not bypass profile validation`() {
+        val indexes = listOf(
+            OkfDocument("C:/index.md", linkedMapOf(), "# Index"),
+            OkfDocument("C:index.md", linkedMapOf(), "# Index"),
         )
 
-        val issues = validate(index)
+        val issues = validator.validate(OkfBundle(indexes))
 
-        assertIssue(
-            issues,
-            OkfIssueSeverity.ERROR,
-            path = "C:/index.md",
-            field = "path",
-            message = "document path is not a safe normalized bundle path",
-        )
-        assertIssue(issues, OkfIssueSeverity.ERROR, path = "C:/index.md", field = "type")
+        indexes.forEach { index ->
+            assertIssue(
+                issues,
+                OkfIssueSeverity.ERROR,
+                path = index.path,
+                field = "path",
+                message = "document path is not a safe normalized bundle path",
+            )
+            assertIssue(issues, OkfIssueSeverity.ERROR, path = index.path, field = "type")
+        }
     }
 
     @Test
@@ -293,20 +287,22 @@ class OkfProfileValidatorTest {
     }
 
     @Test
-    fun `rejects a Windows drive path revealed by URI decoding`() {
+    fun `rejects Windows drive paths revealed by URI decoding`() {
         val source = document(
             path = "concepts/source.md",
-            body = "[Drive](C%3A/secret.md)",
+            body = "[Absolute drive](C%3A/secret.md)\n[Drive relative](C%3Asecret.md)",
         )
 
         val issues = validate(source)
 
-        assertIssue(
-            issues,
-            OkfIssueSeverity.ERROR,
-            path = source.path,
-            field = "link",
-            message = "link target is not a safe normalized bundle path",
+        assertEquals(
+            2,
+            issues.count {
+                it.severity == OkfIssueSeverity.ERROR &&
+                    it.path == source.path &&
+                    it.field == "link" &&
+                    it.message == "link target is not a safe normalized bundle path"
+            },
         )
         assertTrue(issues.none { it.severity == OkfIssueSeverity.WARNING && it.field == "link" })
     }

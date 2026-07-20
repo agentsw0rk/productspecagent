@@ -203,7 +203,7 @@ class OkfProfileValidator {
         val normalizedSource = normalizedBundlePath(sourcePath) ?: return null
         val decodedPath = destination.path ?: return null
         if (decodedPath.isBlank()) return normalizedSource
-        if (decodedPath.contains('\\') || WINDOWS_ABSOLUTE_PATH.containsMatchIn(decodedPath)) return null
+        if (decodedPath.contains('\\') || WINDOWS_DRIVE_PATH.containsMatchIn(decodedPath)) return null
 
         return try {
             val destinationPath = Path.of(decodedPath)
@@ -218,7 +218,7 @@ class OkfProfileValidator {
     }
 
     private fun normalizedBundlePath(path: String): String? {
-        if (path.isBlank() || path.contains('\\') || WINDOWS_ABSOLUTE_PATH.containsMatchIn(path)) return null
+        if (path.isBlank() || path.contains('\\') || WINDOWS_DRIVE_PATH.containsMatchIn(path)) return null
 
         return try {
             val parsed = Path.of(path)
@@ -288,7 +288,7 @@ class OkfProfileValidator {
             "architecture-constraint",
         )
         val HTTP_SCHEMES = setOf("http", "https")
-        val WINDOWS_ABSOLUTE_PATH = Regex("^[A-Za-z]:/")
+        val WINDOWS_DRIVE_PATH = Regex("^[A-Za-z]:")
         val DESCRIPTION_ENDINGS = setOf('.', '!', '?')
     }
 }
