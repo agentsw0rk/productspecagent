@@ -16,20 +16,21 @@ class OkfProjectionStorage(
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 
     fun replaceRawBundle(projectId: String, bundle: OkfBundle) {
-        val documents = bundle.documents.onEach { document ->
+        val renderedDocuments = bundle.documents.map { document ->
             require(document.path.startsWith(RAW_BUNDLE_PATH_PREFIX)) {
                 "OKF document path must be below $RAW_BUNDLE_PATH_PREFIX: ${document.path}"
             }
             require(document.path.split('/').none { it == ".." }) {
                 "OKF document path must not contain parent traversal: ${document.path}"
             }
+            document.path to parser.render(document).toByteArray()
         }
 
         objectStore.deletePrefix(rawBundlePrefix(projectId))
-        documents.forEach { document ->
+        renderedDocuments.forEach { (path, content) ->
             objectStore.put(
-                "projects/$projectId/${document.path}",
-                parser.render(document).toByteArray(),
+                "projects/$projectId/$path",
+                content,
                 "text/markdown",
             )
         }

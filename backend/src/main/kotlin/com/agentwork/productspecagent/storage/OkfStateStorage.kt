@@ -1,6 +1,7 @@
 package com.agentwork.productspecagent.storage
 
 import com.agentwork.productspecagent.domain.okf.OkfChangeset
+import com.agentwork.productspecagent.domain.okf.OkfChangesetStatus
 import com.agentwork.productspecagent.domain.okf.OkfConflict
 import com.agentwork.productspecagent.domain.okf.OkfProjectState
 import kotlinx.serialization.encodeToString
@@ -31,7 +32,17 @@ class OkfStateStorage(private val objectStore: ObjectStore) {
     }
 
     fun saveApprovedChangeset(changeset: OkfChangeset) {
-        putJson(approvedChangesetKey(changeset.projectId, changeset.id), json.encodeToString(changeset))
+        require(changeset.status == OkfChangesetStatus.APPROVED) {
+            "approved changeset receipt must have APPROVED status"
+        }
+        val key = approvedChangesetKey(changeset.projectId, changeset.id)
+        val existing = readJson<OkfChangeset>(key)
+        check(existing == null || existing == changeset) {
+            "approved changeset receipt ${changeset.id} is immutable"
+        }
+        if (existing == null) {
+            putJson(key, json.encodeToString(changeset))
+        }
     }
 
     fun loadApprovedChangeset(projectId: String, changesetId: String): OkfChangeset? =

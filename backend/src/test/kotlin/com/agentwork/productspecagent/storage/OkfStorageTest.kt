@@ -15,8 +15,12 @@ import com.agentwork.productspecagent.service.okf.OkfParser
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 class OkfStorageTest {
 
@@ -79,6 +83,12 @@ class OkfStorageTest {
             listOf("projects/p1/okf/changesets/approved/approved.json"),
             objectStore.listKeys("projects/p1/okf/changesets/approved/"),
         )
+        assertThrows(IllegalArgumentException::class.java) {
+            storage.saveApprovedChangeset(changeset(id = "pending"))
+        }
+        assertThrows(IllegalStateException::class.java) {
+            storage.saveApprovedChangeset(approved.copy(updatedAt = "2026-07-21T00:00:00Z"))
+        }
     }
 
     @Test
@@ -123,6 +133,28 @@ class OkfStorageTest {
     }
 
     @Test
+    fun `raw bundle rendering failure preserves the previous snapshot`() {
+        val objectStore = InMemoryObjectStore()
+        val parser = mock<OkfParser>()
+        val storage = OkfProjectionStorage(objectStore, parser)
+        val previousContent = "# Previous\n"
+        objectStore.put("projects/p1/docs/okf/index.md", previousContent.toByteArray())
+        whenever(parser.render(any())).thenThrow(IllegalStateException("cannot render"))
+
+        assertThrows(RuntimeException::class.java) {
+            storage.replaceRawBundle(
+                "p1",
+                OkfBundle(listOf(OkfDocument("docs/okf/index.md", linkedMapOf(), "# Replacement\n"))),
+            )
+        }
+
+        assertEquals(
+            previousContent,
+            objectStore.get("projects/p1/docs/okf/index.md")!!.toString(Charsets.UTF_8),
+        )
+    }
+
+    @Test
     fun `feature projection roundtrips`() {
         val storage = OkfProjectionStorage(InMemoryObjectStore(), OkfParser())
         val graph = WizardFeatureGraph(features = listOf(WizardFeature(id = "feature-1", title = "First")))
@@ -162,4 +194,5 @@ class OkfStorageTest {
         updatedAt = "2026-07-20T00:00:00Z",
         approvedCommit = if (status == OkfChangesetStatus.APPROVED) "def456" else null,
     )
+
 }
