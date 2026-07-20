@@ -140,13 +140,24 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         val usedSlugs = mutableSetOf<String>()
         return features.map { feature ->
             val baseSlug = slug(feature.title)
-            val selectedSlug = if (usedSlugs.add(baseSlug)) {
-                baseSlug
-            } else {
-                "$baseSlug-${feature.id.take(8).lowercase(Locale.ROOT)}".also(usedSlugs::add)
-            }
+            val selectedSlug = uniqueSlug(baseSlug, feature.id, usedSlugs)
             OkfFeaturePath(feature.id, "features/$selectedSlug.md")
         }
+    }
+
+    private fun uniqueSlug(baseSlug: String, id: String, usedSlugs: MutableSet<String>): String {
+        if (usedSlugs.add(baseSlug)) return baseSlug
+
+        val stableId = id.lowercase(Locale.ROOT)
+        val shortCandidate = "$baseSlug-${stableId.take(8)}"
+        if (usedSlugs.add(shortCandidate)) return shortCandidate
+
+        val fullCandidate = "$baseSlug-$stableId"
+        if (usedSlugs.add(fullCandidate)) return fullCandidate
+
+        var discriminator = 2
+        while (!usedSlugs.add("$fullCandidate-$discriminator")) discriminator += 1
+        return "$fullCandidate-$discriminator"
     }
 
     private fun slug(title: String): String {
@@ -179,7 +190,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         }.joinToString("\n")
 
         return buildString {
-            appendSection("Problem", feature.description)
+            appendSection("Problem", "")
             appendSection("Outcome", "")
             appendSection("Acceptance Criteria", criteria)
             append("## Relationships\n")

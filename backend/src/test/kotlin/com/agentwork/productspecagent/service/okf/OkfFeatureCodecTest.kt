@@ -50,6 +50,9 @@ class OkfFeatureCodecTest {
         assertEquals(LOGIN_ID, login.frontmatter["id"])
         assertEquals(listOf("FRONTEND", "BACKEND"), login.frontmatter["scopes"])
         assertEquals(linkedMapOf("api" to "/login", "screen" to "login"), login.frontmatter["scope_fields"])
+        assertEquals("Users authenticate with valid credentials.", login.frontmatter["description"])
+        assertEquals("", sectionContent(login.body, "Problem"))
+        assertEquals("", sectionContent(login.body, "Outcome"))
         assertTrue(login.body.contains("<!-- okf:id=$LOGIN_CRITERION_ID -->"))
         assertTrue(dashboard.body.contains("[Login](login.md)"))
         assertTrue(dashboard.body.contains("<!-- okf:id=$EDGE_ID -->"))
@@ -200,6 +203,32 @@ class OkfFeatureCodecTest {
     }
 
     @Test
+    fun `slug allocation remains unique when the id suffix candidate is already occupied`() {
+        val suffixCollisionId = "12345678-3333-4333-8333-333333333333"
+        val graph = WizardFeatureGraph(
+            features = listOf(
+                WizardFeature(id = DASHBOARD_ID, title = "Foo 12345678"),
+                WizardFeature(id = LOGIN_ID, title = "Foo"),
+                WizardFeature(id = suffixCollisionId, title = "Foo"),
+            ),
+        )
+
+        val first = codec.encode(graph, existing = null, timestamp = timestamp)
+        val second = codec.encode(graph, existing = null, timestamp = timestamp)
+        val featurePaths = first.documents.filter { it.frontmatter["type"] == "feature" }.map { it.path }
+        val rootLinks = markdownLinks(first.byPath.getValue("index.md").body)
+        val featureIndexLinks = markdownLinks(first.byPath.getValue("features/index.md").body)
+
+        assertEquals(first, second)
+        assertEquals(3, featurePaths.size)
+        assertEquals(3, featurePaths.toSet().size)
+        assertEquals(3, rootLinks.toSet().size)
+        assertEquals(3, featureIndexLinks.toSet().size)
+        assertTrue(featurePaths.contains("features/foo.md"))
+        assertTrue(featurePaths.contains("features/foo-12345678.md"))
+    }
+
+    @Test
     fun `decode ignores indexes and non-feature concepts and reports malformed feature documents`() {
         val malformed = featureDocument(
             path = "features/broken.md",
@@ -294,6 +323,16 @@ class OkfFeatureCodecTest {
         ),
         body = body,
     )
+
+    private fun sectionContent(body: String, heading: String): String {
+        val lines = body.lines()
+        val start = lines.indexOf("## $heading")
+        val end = (start + 1 until lines.size).first { lines[it].startsWith("## ") }
+        return lines.subList(start + 1, end).joinToString("\n").trim()
+    }
+
+    private fun markdownLinks(body: String): List<String> =
+        Regex("\\[[^]]+]\\(([^)]+)\\)").findAll(body).map { it.groupValues[1] }.toList()
 
     private companion object {
         const val LOGIN_ID = "11111111-1111-4111-8111-111111111111"
