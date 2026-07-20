@@ -9,6 +9,9 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.api.errors.TransportException
@@ -45,6 +48,8 @@ class OkfGitInvalidBundleException(message: String, cause: Throwable? = null) : 
 
 @Service
 class OkfGitClient(private val properties: OkfGitProperties) {
+
+    private val projectLocks = ConcurrentHashMap<String, ReentrantLock>()
 
     fun fetch(projectId: String, connection: OkfGitConnection): OkfGitSnapshot =
         withRepository(projectId, connection) { git ->
@@ -106,18 +111,20 @@ class OkfGitClient(private val properties: OkfGitProperties) {
     ): T {
         val checkout = checkoutPath(projectId)
         validateConnection(connection)
-        Files.createDirectories(properties.worktreeRoot.toAbsolutePath().normalize())
-        if (!Files.exists(checkout.resolve(".git"))) {
-            clone(checkout, connection).close()
-        }
-
-        return try {
-            Git.open(checkout.toFile()).use { git ->
-                configureRemote(git.repository, connection.remoteUrl)
-                block(git)
+        return projectLocks.computeIfAbsent(projectId) { ReentrantLock() }.withLock {
+            Files.createDirectories(properties.worktreeRoot.toAbsolutePath().normalize())
+            if (!Files.exists(checkout.resolve(".git"))) {
+                clone(checkout, connection).close()
             }
-        } catch (exception: TransportException) {
-            throw translateTransportException(exception)
+
+            try {
+                Git.open(checkout.toFile()).use { git ->
+                    configureRemote(git.repository, connection.remoteUrl)
+                    block(git)
+                }
+            } catch (exception: TransportException) {
+                throw translateTransportException(exception)
+            }
         }
     }
 
@@ -176,6 +183,8 @@ class OkfGitClient(private val properties: OkfGitProperties) {
         TreeWalk(repository).use { walk ->
             walk.addTree(commit.tree)
             walk.isRecursive = true
+            var totalBytes = 0L
+            var fileCount = 0
             buildMap {
                 while (walk.next()) {
                     val path = walk.pathString
@@ -184,10 +193,22 @@ class OkfGitClient(private val properties: OkfGitProperties) {
                     }
                     if (!path.startsWith(MANAGED_PREFIX)) continue
                     val relativePath = validateBundlePath(path.removePrefix(MANAGED_PREFIX))
-                    if (walk.getFileMode(0) != FileMode.REGULAR_FILE) {
+                    if (walk.getFileMode(0) !in REGULAR_FILE_MODES) {
                         throw OkfGitInvalidBundleException("OKF path is not a regular file: $path")
                     }
-                    val bytes = repository.open(walk.getObjectId(0), Constants.OBJ_BLOB).bytes
+                    fileCount++
+                    if (fileCount > MAX_FILE_COUNT) {
+                        throw OkfGitInvalidBundleException("OKF bundle exceeds $MAX_FILE_COUNT files")
+                    }
+                    val loader = repository.open(walk.getObjectId(0), Constants.OBJ_BLOB)
+                    if (loader.size > MAX_FILE_BYTES) {
+                        throw OkfGitInvalidBundleException("OKF file exceeds $MAX_FILE_BYTES bytes: $path")
+                    }
+                    totalBytes += loader.size
+                    if (totalBytes > MAX_BUNDLE_BYTES) {
+                        throw OkfGitInvalidBundleException("OKF bundle exceeds $MAX_BUNDLE_BYTES bytes")
+                    }
+                    val bytes = loader.bytes
                     put(relativePath, decodeUtf8(path, bytes))
                 }
             }
@@ -267,9 +288,15 @@ class OkfGitClient(private val properties: OkfGitProperties) {
             throw IllegalArgumentException("invalid Git remote URL", exception)
         }
         require(uri.rawUserInfo == null) { "Git remote URL must not contain credentials" }
+        require(!uri.isOpaque && uri.rawQuery == null && uri.rawFragment == null) {
+            "Git remote URL must not contain opaque, query, or fragment components"
+        }
         val scheme = uri.scheme?.lowercase()
         require(scheme == "https" || scheme == "file" && properties.allowFileRemotes) {
             "Git remote URL must use HTTPS"
+        }
+        if (scheme == "https") {
+            require(!uri.host.isNullOrBlank()) { "HTTPS Git remote URL must contain a host" }
         }
         require(Repository.isValidRefName("refs/heads/${connection.baseBranch}")) { "invalid base branch" }
         require(Repository.isValidRefName("refs/heads/${connection.canonicalBranch}")) { "invalid canonical branch" }
@@ -304,7 +331,14 @@ class OkfGitClient(private val properties: OkfGitProperties) {
         const val MANAGED_ROOT = "docs/okf"
         const val MANAGED_PREFIX = "$MANAGED_ROOT/"
         val PROJECT_ID = Regex("[A-Za-z0-9_-]+")
-        val AUTH_FAILURE = Regex("auth|unauthorized|forbidden|401|403|not authorized", RegexOption.IGNORE_CASE)
+        val AUTH_FAILURE = Regex(
+            "auth|unauthorized|forbidden|401|403|not authorized|access denied|credentials",
+            RegexOption.IGNORE_CASE,
+        )
+        val REGULAR_FILE_MODES = setOf(FileMode.REGULAR_FILE, FileMode.EXECUTABLE_FILE)
+        const val MAX_FILE_COUNT = 2_000
+        const val MAX_FILE_BYTES = 4_000_000L
+        const val MAX_BUNDLE_BYTES = 32_000_000L
         val SUCCESSFUL_PUSH_STATUSES = setOf(RemoteRefUpdate.Status.OK, RemoteRefUpdate.Status.UP_TO_DATE)
         val REMOTE_ADVANCED_STATUSES = setOf(
             RemoteRefUpdate.Status.REJECTED_NONFASTFORWARD,

@@ -5,6 +5,8 @@ import com.agentwork.productspecagent.domain.okf.OkfGitConnection
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.writeText
@@ -116,6 +118,12 @@ class OkfGitClientTest {
             client.fetch("project", OkfGitConnection("https://user:secret@example.test/repo.git"))
         }
         assertThrows(IllegalArgumentException::class.java) {
+            client.fetch("project", OkfGitConnection("https:user:secret@example.test/repo.git"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            client.fetch("project", OkfGitConnection("https://example.test/repo.git?token=secret"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
             client.fetch("project", OkfGitConnection("ssh://example.test/repo.git"))
         }
         assertThrows(IllegalArgumentException::class.java) {
@@ -162,6 +170,64 @@ class OkfGitClientTest {
         assertThrows(OkfGitInvalidBundleException::class.java) {
             client.fetch("project-5", OkfGitConnection(remote.toUri().toString()))
         }
+    }
+
+    @Test
+    fun `accepts executable regular files in the managed bundle`() {
+        val remote = seedBareRemote(tempDir.resolve("remote.git"))
+        addRawEntry(remote, "refs/heads/main", "docs/okf/script.md", FileMode.EXECUTABLE_FILE, "# Script\n")
+        val client = OkfGitClient(properties(tempDir.resolve("worktrees")))
+
+        assertEquals(
+            "# Script\n",
+            client.fetch("project-6", OkfGitConnection(remote.toUri().toString())).files["script.md"],
+        )
+    }
+
+    @Test
+    fun `rejects oversized remote files before loading their content`() {
+        val remote = seedBareRemote(tempDir.resolve("remote.git"))
+        addRawEntry(
+            remote,
+            "refs/heads/main",
+            "docs/okf/oversized.md",
+            FileMode.REGULAR_FILE,
+            ByteArray(4_000_001) { 'a'.code.toByte() },
+        )
+        val client = OkfGitClient(properties(tempDir.resolve("worktrees")))
+
+        assertThrows(OkfGitInvalidBundleException::class.java) {
+            client.fetch("project-7", OkfGitConnection(remote.toUri().toString()))
+        }
+    }
+
+    @Test
+    fun `serializes concurrent operations for the same project`() {
+        val remote = seedBareRemote(tempDir.resolve("remote.git"))
+        val client = OkfGitClient(properties(tempDir.resolve("worktrees")))
+        val connection = OkfGitConnection(remote.toUri().toString())
+        val base = client.fetch("project-8", connection)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+
+        val results = listOf("first.md", "second.md").map { path ->
+            executor.submit<Result<OkfGitCommitResult>> {
+                start.await()
+                runCatching {
+                    client.commitAndPush("project-8", connection, base.commit, mapOf(path to "# $path\n"), path)
+                }
+            }
+        }
+        start.countDown()
+        val completed = results.map { it.get() }
+        executor.shutdownNow()
+
+        assertEquals(1, completed.count { it.isSuccess })
+        assertEquals(1, completed.count { it.exceptionOrNull() is OkfGitRemoteAdvancedException })
+        assertTrue(
+            client.fetch("project-8", connection).files.keys in
+                setOf(setOf("first.md"), setOf("second.md")),
+        )
     }
 
     private fun properties(root: Path, allowFileRemotes: Boolean = true) = OkfGitProperties(
