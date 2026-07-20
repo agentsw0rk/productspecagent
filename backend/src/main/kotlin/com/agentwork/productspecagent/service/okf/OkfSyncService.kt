@@ -51,6 +51,32 @@ class OkfSyncService(
         val current = stateStorage.loadState(projectId)
         val connection = current.connection ?: throw OkfNotConnectedException(projectId)
         val pending = stateStorage.loadPendingChangeset(projectId)
+        if (pending?.approvedCommit != null) {
+            val base = gitClient.readAt(projectId, connection, requireNotNull(pending.baseCommit))
+            val pushed = gitClient.readAt(projectId, connection, pending.approvedCommit)
+            val targetFiles = applyOperations(base.files, pending.operations)
+            if (pushed.files != targetFiles) {
+                return@locked saveState(
+                    current.copy(
+                        syncStatus = OkfSyncStatus.PUSH_FAILED,
+                        pendingChangesetId = pending.id,
+                        lastError = "pushed OKF changeset does not match pending content",
+                        updatedAt = now(),
+                    ),
+                )
+            }
+            val pushedProjection = projectionService.project(projectId, pushed.files)
+            if (!pushedProjection.valid) {
+                return@locked saveInvalidState(
+                    current,
+                    pushedProjection.issues.joinToString("; ") { it.message },
+                )
+            }
+            val approved = pending.copy(status = OkfChangesetStatus.APPROVED, updatedAt = now())
+            stateStorage.saveApprovedChangeset(approved)
+            finalizeApprovedReceipt(projectId, approved)
+            return@locked sync(projectId)
+        }
         val snapshot = gitClient.fetch(projectId, connection)
         val projected = projectionService.project(projectId, snapshot.files)
         if (!projected.valid) {
@@ -71,9 +97,10 @@ class OkfSyncService(
         }
 
         if (pending.baseCommit == snapshot.commit) {
+            val hasConflicts = stateStorage.loadConflicts(projectId).isNotEmpty()
             return@locked saveState(
                 current.copy(
-                    syncStatus = OkfSyncStatus.PROPOSAL_PENDING,
+                    syncStatus = if (hasConflicts) OkfSyncStatus.CONFLICT else OkfSyncStatus.PROPOSAL_PENDING,
                     baseCommit = snapshot.commit,
                     pendingChangesetId = pending.id,
                     lastError = null,
@@ -219,7 +246,7 @@ class OkfSyncService(
         }
 
         val readback = try {
-            gitClient.fetch(projectId, connection)
+            gitClient.readAt(projectId, connection, commitResult.commit)
         } catch (exception: OkfGitException) {
             savePushFailedState(current, pending, exception)
             throw OkfPushException("failed to verify pushed OKF changeset ${pending.id}", exception)
@@ -262,8 +289,6 @@ class OkfSyncService(
         val conflicts = stateStorage.loadConflicts(projectId)
             .takeIf { stored -> stored.isNotEmpty() && stored.all { it.changesetId == changesetId } }
             ?: throw OkfChangesetNotFoundException(changesetId)
-        val conflict = conflicts.first()
-        val remainingConflicts = conflicts.drop(1)
         val current = stateStorage.loadState(projectId)
         val connection = current.connection ?: throw OkfNotConnectedException(projectId)
         val remote = gitClient.fetch(projectId, connection)
@@ -272,6 +297,18 @@ class OkfSyncService(
             saveInvalidState(current, projected.issues.joinToString("; ") { it.message })
             return@locked pending
         }
+
+        val baseFiles = gitClient.readAt(projectId, connection, requireNotNull(pending.baseCommit)).files
+        val refreshedPlan = planner.plan(
+            parseBundle(baseFiles),
+            requireNotNull(projected.bundle),
+            parseBundle(applyOperations(baseFiles, pending.operations)),
+        )
+        val newlyDetected = refreshedPlan.conflicts
+            .map { it.copy(changesetId = changesetId) }
+            .filter { detected -> conflicts.none { sameConflict(it, detected) } }
+        val conflict = conflicts.first()
+        val remainingConflicts = conflicts.drop(1) + newlyDetected
 
         val proposedFiles = remote.files.toMutableMap()
         pending.operations
@@ -324,9 +361,16 @@ class OkfSyncService(
                 operations.firstOrNull { matches(it, remaining) }
                     ?.let { refreshConflict(changesetId, remaining, it) }
             }
+            if (unresolved.isEmpty()) {
+                stateStorage.deleteConflict(projectId)
+            } else {
+                stateStorage.saveConflicts(projectId, unresolved)
+            }
             val updated = pending.copy(baseCommit = remote.commit, operations = operations, updatedAt = now())
             stateStorage.savePendingChangeset(updated)
-            stateStorage.saveConflicts(projectId, unresolved)
+            if (unresolved.isEmpty()) {
+                return@locked finishResolvedChangeset(projectId, current, updated, remote.commit)
+            }
             saveState(
                 current.copy(
                     syncStatus = OkfSyncStatus.CONFLICT,
@@ -477,6 +521,45 @@ class OkfSyncService(
     private fun matches(operation: OkfFileOperation, conflict: OkfConflict): Boolean =
         conflict.documentId?.let { it == operation.documentId }
             ?: (operation.path == conflict.path || operation.previousPath == conflict.path)
+
+    private fun sameConflict(first: OkfConflict, second: OkfConflict): Boolean =
+        if (first.documentId != null || second.documentId != null) {
+            first.documentId == second.documentId
+        } else {
+            first.path == second.path
+        }
+
+    private fun finishResolvedChangeset(
+        projectId: String,
+        current: OkfProjectState,
+        pending: OkfChangeset,
+        remoteCommit: String,
+    ): OkfChangeset? {
+        if (pending.operations.isEmpty()) {
+            stateStorage.deletePendingChangeset(projectId)
+            saveState(
+                current.copy(
+                    syncStatus = OkfSyncStatus.CLEAN,
+                    baseCommit = remoteCommit,
+                    pendingChangesetId = null,
+                    lastError = null,
+                    updatedAt = now(),
+                ),
+            )
+            return null
+        }
+        stateStorage.savePendingChangeset(pending)
+        saveState(
+            current.copy(
+                syncStatus = OkfSyncStatus.PROPOSAL_PENDING,
+                baseCommit = remoteCommit,
+                pendingChangesetId = pending.id,
+                lastError = null,
+                updatedAt = now(),
+            ),
+        )
+        return pending
+    }
 
     private fun saveInvalidState(state: OkfProjectState, message: String): OkfProjectState = saveState(
         state.copy(syncStatus = OkfSyncStatus.INVALID_REMOTE, lastError = message, updatedAt = now()),

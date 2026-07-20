@@ -158,11 +158,46 @@ class OkfSyncServiceTest {
         assertEquals(OkfSyncStatus.CONFLICT, fixture.stateStorage.loadState(PROJECT_ID).syncStatus)
         assertEquals(1, fixture.stateStorage.loadConflicts(PROJECT_ID).size)
         assertTrue(afterFirst.operations.any { it.documentId == LOGIN_ID && it.content?.contains("Local login") == true })
+        assertThrows(OkfChangesetConflictException::class.java) {
+            fixture.service.approve(PROJECT_ID, CHANGESET_ID)
+        }
+
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c2"))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", remoteFiles))
 
         val afterSecond = fixture.service.resolve(PROJECT_ID, CHANGESET_ID, OkfConflictResolution.REMOTE)!!
         assertEquals(OkfSyncStatus.PROPOSAL_PENDING, fixture.stateStorage.loadState(PROJECT_ID).syncStatus)
         assertTrue(afterSecond.operations.any { it.documentId == LOGIN_ID && it.content?.contains("Local login") == true })
         assertTrue(afterSecond.operations.none { it.documentId == DASHBOARD_ID })
+    }
+
+    @Test
+    fun `new remote overlap during conflict resolution becomes another conflict`() {
+        val fixture = fixture(baseCommit = "c1")
+        val baseFiles = files(feature("Login"), feature("Dashboard", DASHBOARD_ID))
+        val localFiles = files(feature("Local login"), feature("Local dashboard", DASHBOARD_ID))
+        val firstRemote = files(feature("Remote login"), feature("Dashboard", DASHBOARD_ID))
+        val latestRemote = files(feature("Remote login"), feature("New remote dashboard", DASHBOARD_ID))
+        val pendingOperations = (
+            operations(baseFiles, localFiles, LOGIN_ID) +
+                operations(baseFiles, localFiles, DASHBOARD_ID)
+            ).distinctBy { it.documentId ?: "path:${it.path}" }
+        fixture.stateStorage.savePendingChangeset(changeset(baseCommit = "c1", operations = pendingOperations))
+        whenever(fixture.git.fetch(PROJECT_ID, CONNECTION))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", firstRemote))
+            .thenReturn(OkfGitSnapshot("c3", "productspec/okf", latestRemote))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c1"))
+            .thenReturn(OkfGitSnapshot("c1", "productspec/okf", baseFiles))
+
+        fixture.service.sync(PROJECT_ID)
+        fixture.service.resolve(PROJECT_ID, CHANGESET_ID, OkfConflictResolution.REMOTE)
+
+        assertEquals(OkfSyncStatus.CONFLICT, fixture.stateStorage.loadState(PROJECT_ID).syncStatus)
+        assertEquals(DASHBOARD_ID, fixture.stateStorage.loadConflict(PROJECT_ID)?.documentId)
+        assertTrue(
+            fixture.stateStorage.loadPendingChangeset(PROJECT_ID)!!.operations
+                .any { it.documentId == DASHBOARD_ID && it.content?.contains("Local dashboard") == true },
+        )
     }
 
     @Test
@@ -208,6 +243,8 @@ class OkfSyncServiceTest {
             .thenReturn(OkfGitSnapshot("c1", "productspec/okf", baseFiles))
         whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c2"))
             .thenReturn(OkfGitSnapshot("c2", "productspec/okf", remoteFiles))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c3"))
+            .thenReturn(OkfGitSnapshot("c3", "productspec/okf", expectedFiles))
         whenever(fixture.git.commitAndPush(eq(PROJECT_ID), eq(CONNECTION), eq("c2"), eq(expectedFiles), any()))
             .thenReturn(OkfGitCommitResult("c3", "productspec/okf"))
 
@@ -230,6 +267,8 @@ class OkfSyncServiceTest {
         whenever(fixture.git.fetch(PROJECT_ID, CONNECTION))
             .thenReturn(OkfGitSnapshot("c1", "productspec/okf", baseFiles))
             .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c2"))
             .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
         whenever(fixture.git.commitAndPush(eq(PROJECT_ID), eq(CONNECTION), eq("c1"), any(), any()))
             .thenThrow(OkfGitRemoteAdvancedException("advanced"))
@@ -258,6 +297,8 @@ class OkfSyncServiceTest {
             .thenReturn(OkfGitCommitResult("c2", "productspec/okf"))
         whenever(fixture.git.fetch(PROJECT_ID, CONNECTION))
             .thenReturn(OkfGitSnapshot("c1", "main", baseFiles))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c2"))
             .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
 
         val approved = fixture.service.approve(PROJECT_ID, CHANGESET_ID)
@@ -289,6 +330,8 @@ class OkfSyncServiceTest {
         whenever(fixture.git.fetch(PROJECT_ID, CONNECTION))
             .thenReturn(OkfGitSnapshot("c1", "main", baseFiles))
             .thenReturn(OkfGitSnapshot("c3", "productspec/okf", files(feature("Other"))))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c2"))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", files(feature("Other"))))
 
         assertThrows(OkfPushException::class.java) {
             fixture.service.approve(PROJECT_ID, CHANGESET_ID)
@@ -337,6 +380,9 @@ class OkfSyncServiceTest {
             .thenReturn(OkfGitSnapshot("c1", "productspec/okf", baseFiles))
             .thenThrow(OkfGitException("temporary fetch failure"))
             .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c2"))
+            .thenThrow(OkfGitException("temporary readback failure"))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
 
         assertThrows(OkfPushException::class.java) {
             fixture.service.approve(PROJECT_ID, CHANGESET_ID)
@@ -347,6 +393,29 @@ class OkfSyncServiceTest {
 
         assertEquals("c2", approved.approvedCommit)
         verify(fixture.git, times(1)).commitAndPush(eq(PROJECT_ID), eq(CONNECTION), eq("c1"), any(), any())
+    }
+
+    @Test
+    fun `sync finalizes a pushed pending marker instead of deleting its receipt`() {
+        val fixture = fixture(baseCommit = "c1")
+        val baseFiles = files(feature("Login"))
+        val proposedFiles = files(feature("Local login"))
+        fixture.stateStorage.savePendingChangeset(
+            changeset(baseCommit = "c1", operations = operations(baseFiles, proposedFiles, LOGIN_ID))
+                .copy(approvedCommit = "c2"),
+        )
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c1"))
+            .thenReturn(OkfGitSnapshot("c1", "productspec/okf", baseFiles))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c2"))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
+        whenever(fixture.git.fetch(PROJECT_ID, CONNECTION))
+            .thenReturn(OkfGitSnapshot("c2", "productspec/okf", proposedFiles))
+
+        val state = fixture.service.sync(PROJECT_ID)
+
+        assertEquals(OkfSyncStatus.CLEAN, state.syncStatus)
+        assertEquals(null, fixture.stateStorage.loadPendingChangeset(PROJECT_ID))
+        assertEquals("c2", fixture.stateStorage.loadApprovedChangeset(PROJECT_ID, CHANGESET_ID)?.approvedCommit)
     }
 
     @Test
@@ -372,6 +441,8 @@ class OkfSyncServiceTest {
         )
         whenever(fixture.git.fetch(PROJECT_ID, CONNECTION))
             .thenReturn(OkfGitSnapshot("c2", "productspec/okf", remoteFiles))
+        whenever(fixture.git.readAt(PROJECT_ID, CONNECTION, "c1"))
+            .thenReturn(OkfGitSnapshot("c1", "productspec/okf", baseFiles))
 
         val resolved = fixture.service.resolve(PROJECT_ID, CHANGESET_ID, OkfConflictResolution.PROPOSED)!!
 
