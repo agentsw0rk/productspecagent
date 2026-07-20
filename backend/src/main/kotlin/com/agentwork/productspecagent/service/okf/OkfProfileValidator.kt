@@ -5,9 +5,13 @@ import com.agentwork.productspecagent.domain.okf.OkfDocument
 import com.agentwork.productspecagent.domain.okf.OkfIssue
 import com.agentwork.productspecagent.domain.okf.OkfIssueSeverity
 import org.commonmark.node.AbstractVisitor
+import org.commonmark.node.Document
 import org.commonmark.node.Heading
 import org.commonmark.node.Link
+import org.commonmark.node.Node
 import org.commonmark.parser.Parser
+import org.commonmark.renderer.NodeRenderer
+import org.commonmark.renderer.text.TextContentNodeRendererContext
 import org.commonmark.renderer.text.TextContentRenderer
 import org.springframework.stereotype.Service
 import java.net.URI
@@ -123,23 +127,32 @@ class OkfProfileValidator {
     private fun validateLinks(document: OkfDocument, bundlePaths: Set<String>, issues: MutableList<OkfIssue>) {
         val root = Parser.builder().build().parse(document.body)
         var currentLevelTwoHeading: String? = null
-        val headingRenderer = TextContentRenderer.builder().build()
+        var headingDepth = 0
+        val headingRenderer = TextContentRenderer.builder()
+            .nodeRendererFactory(::HeadingLinkTextRenderer)
+            .build()
 
         root.accept(object : AbstractVisitor() {
             override fun visit(heading: Heading) {
-                if (heading.level == 2) {
-                    currentLevelTwoHeading = headingRenderer.render(heading).trimEnd()
-                } else if (heading.level < 2) {
-                    currentLevelTwoHeading = null
-                }
+                val isDocumentLevel = heading.parent is Document
+                headingDepth += 1
                 visitChildren(heading)
+                headingDepth -= 1
+
+                if (isDocumentLevel) {
+                    if (heading.level == 2) {
+                        currentLevelTwoHeading = headingRenderer.render(heading).trimEnd()
+                    } else if (heading.level < 2) {
+                        currentLevelTwoHeading = null
+                    }
+                }
             }
 
             override fun visit(link: Link) {
                 validateLink(
                     document = document,
                     destination = link.destination,
-                    inCitations = currentLevelTwoHeading == CITATIONS_HEADING,
+                    inCitations = headingDepth == 0 && currentLevelTwoHeading == CITATIONS_HEADING,
                     bundlePaths = bundlePaths,
                     issues = issues,
                 )
@@ -165,7 +178,8 @@ class OkfProfileValidator {
         }
         val scheme = uri.scheme?.lowercase()
         if (scheme != null) {
-            if (scheme !in HTTP_SCHEMES || !inCitations) {
+            val isExternalHttpUrl = scheme in HTTP_SCHEMES && !uri.isOpaque && !uri.rawAuthority.isNullOrBlank()
+            if (!isExternalHttpUrl || !inCitations) {
                 issues += error(document.path, "link", "external links are allowed only in Citations")
             }
             return
@@ -189,7 +203,7 @@ class OkfProfileValidator {
         val normalizedSource = normalizedBundlePath(sourcePath) ?: return null
         val decodedPath = destination.path ?: return null
         if (decodedPath.isBlank()) return normalizedSource
-        if (decodedPath.contains('\\')) return null
+        if (decodedPath.contains('\\') || WINDOWS_ABSOLUTE_PATH.containsMatchIn(decodedPath)) return null
 
         return try {
             val destinationPath = Path.of(decodedPath)
@@ -244,6 +258,21 @@ class OkfProfileValidator {
 
     private fun error(path: String, field: String, message: String) =
         OkfIssue(OkfIssueSeverity.ERROR, path, field, message)
+
+    private class HeadingLinkTextRenderer(
+        private val context: TextContentNodeRendererContext,
+    ) : NodeRenderer {
+        override fun getNodeTypes(): Set<Class<out Node>> = setOf(Link::class.java)
+
+        override fun render(node: Node) {
+            var child = node.firstChild
+            while (child != null) {
+                val next = child.next
+                context.render(child)
+                child = next
+            }
+        }
+    }
 
     private companion object {
         const val INDEX_FILENAME = "index.md"

@@ -293,6 +293,25 @@ class OkfProfileValidatorTest {
     }
 
     @Test
+    fun `rejects a Windows drive path revealed by URI decoding`() {
+        val source = document(
+            path = "concepts/source.md",
+            body = "[Drive](C%3A/secret.md)",
+        )
+
+        val issues = validate(source)
+
+        assertIssue(
+            issues,
+            OkfIssueSeverity.ERROR,
+            path = source.path,
+            field = "link",
+            message = "link target is not a safe normalized bundle path",
+        )
+        assertTrue(issues.none { it.severity == OkfIssueSeverity.WARNING && it.field == "link" })
+    }
+
+    @Test
     fun `reports links that escape the bundle as errors`() {
         val source = document(
             path = "concepts/source.md",
@@ -341,6 +360,67 @@ class OkfProfileValidatorTest {
 
             [HTTP](http://example.com)
             [HTTPS](https://example.com)
+        """.trimIndent()
+
+        val issues = validate(document(body = body))
+
+        assertEquals(
+            2,
+            issues.count {
+                it.severity == OkfIssueSeverity.ERROR &&
+                    it.field == "link" &&
+                    it.message == "external links are allowed only in Citations"
+            },
+        )
+    }
+
+    @Test
+    fun `nested Citations headings do not authorize later root links`() {
+        val body = """
+            > ## Citations
+            >
+            > Quoted section.
+
+            [Outside](https://outside.example)
+        """.trimIndent()
+
+        val issues = validate(document(body = body))
+
+        assertIssue(
+            issues,
+            OkfIssueSeverity.ERROR,
+            field = "link",
+            message = "external links are allowed only in Citations",
+        )
+    }
+
+    @Test
+    fun `links inside a Citations heading are not authorized by that heading`() {
+        val body = """
+            ## [Citations](https://heading.example)
+
+            [Allowed](https://citation.example)
+        """.trimIndent()
+
+        val issues = validate(document(body = body))
+
+        assertEquals(
+            1,
+            issues.count {
+                it.severity == OkfIssueSeverity.ERROR &&
+                    it.field == "link" &&
+                    it.message == "external links are allowed only in Citations"
+            },
+        )
+    }
+
+    @Test
+    fun `HTTP links under Citations require an authority`() {
+        val body = """
+            ## Citations
+
+            [Opaque](http:foo)
+            [No authority](https:/path)
         """.trimIndent()
 
         val issues = validate(document(body = body))
