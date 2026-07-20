@@ -309,6 +309,11 @@ class OkfSyncServiceTest {
         assertEquals(OkfMode.OKF_ACTIVE, fixture.stateStorage.loadState(PROJECT_ID).mode)
         assertEquals("Login", fixture.projectionStorage.loadFeatureProjection(PROJECT_ID)!!.features.single().title)
         verify(fixture.git, times(1)).commitAndPush(eq(PROJECT_ID), eq(CONNECTION), eq("c1"), any(), any())
+
+        fixture.stateStorage.saveState(fixture.stateStorage.loadState(PROJECT_ID).copy(baseCommit = "c3"))
+        fixture.service.approve(PROJECT_ID, CHANGESET_ID)
+        assertEquals("c3", fixture.stateStorage.loadState(PROJECT_ID).baseCommit)
+        assertEquals("2026-07-20T12:00:00Z", approved.updatedAt)
     }
 
     @Test

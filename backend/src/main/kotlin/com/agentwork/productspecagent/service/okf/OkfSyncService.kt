@@ -72,7 +72,7 @@ class OkfSyncService(
                     pushedProjection.issues.joinToString("; ") { it.message },
                 )
             }
-            val approved = pending.copy(status = OkfChangesetStatus.APPROVED, updatedAt = now())
+            val approved = pending.copy(status = OkfChangesetStatus.APPROVED)
             stateStorage.saveApprovedChangeset(approved)
             finalizeApprovedReceipt(projectId, approved)
             return@locked sync(projectId)
@@ -192,10 +192,9 @@ class OkfSyncService(
                 val approved = pending.copy(
                     status = OkfChangesetStatus.APPROVED,
                     approvedCommit = requireNotNull(synchronized.baseCommit),
-                    updatedAt = now(),
                 )
                 stateStorage.saveApprovedChangeset(approved)
-                return@locked finalizeApprovedReceipt(projectId, approved)
+                return@locked finalizeApprovedReceipt(projectId, approved, force = true)
             }
             pending = refreshed
             current = stateStorage.loadState(projectId)
@@ -272,7 +271,6 @@ class OkfSyncService(
         val approved = pending.copy(
             status = OkfChangesetStatus.APPROVED,
             approvedCommit = commitResult.commit,
-            updatedAt = now(),
         )
         stateStorage.saveApprovedChangeset(approved)
         finalizeApprovedReceipt(projectId, approved)
@@ -580,8 +578,16 @@ class OkfSyncService(
         )
     }
 
-    private fun finalizeApprovedReceipt(projectId: String, approved: OkfChangeset): OkfChangeset {
+    private fun finalizeApprovedReceipt(
+        projectId: String,
+        approved: OkfChangeset,
+        force: Boolean = false,
+    ): OkfChangeset {
         val pending = stateStorage.loadPendingChangeset(projectId)
+        val current = stateStorage.loadState(projectId)
+        if (!force && pending?.id != approved.id && current.pendingChangesetId != approved.id) {
+            return approved
+        }
         if (pending?.id == approved.id) {
             stateStorage.deletePendingChangeset(projectId)
         }
@@ -589,7 +595,6 @@ class OkfSyncService(
             .filterNot { it.changesetId == approved.id }
         stateStorage.saveConflicts(projectId, remainingConflicts)
 
-        val current = stateStorage.loadState(projectId)
         val remainingPending = stateStorage.loadPendingChangeset(projectId)
         saveState(
             current.copy(
