@@ -1,5 +1,6 @@
 package com.agentwork.productspecagent.domain.okf
 
+import com.agentwork.productspecagent.domain.WizardFeatureGraph
 import kotlinx.serialization.Serializable
 
 data class OkfDocument(
@@ -23,6 +24,16 @@ data class OkfIssue(
     val path: String,
     val field: String? = null,
     val message: String,
+)
+
+data class OkfFeatureDecodeResult(
+    val graph: WizardFeatureGraph,
+    val issues: List<OkfIssue>,
+)
+
+data class OkfFeaturePath(
+    val id: String,
+    val path: String,
 )
 
 class OkfParseException(
