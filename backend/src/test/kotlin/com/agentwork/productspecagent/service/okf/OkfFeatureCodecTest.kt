@@ -14,8 +14,9 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import org.junit.jupiter.api.assertThrows
+import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
+import java.util.UUID
 
 class OkfFeatureCodecTest {
 
@@ -243,6 +244,53 @@ class OkfFeatureCodecTest {
     }
 
     @Test
+    fun `managed section replacement preserves ATX H1 and setext heading appendices`() {
+        val existingBody = """
+            ## Acceptance Criteria
+
+            - [ ] Old criterion <!-- okf:id=$DASHBOARD_CRITERION_ID -->
+
+            # Authored H1 Appendix
+
+            H1 content.
+
+            ## Relationships
+
+            - depends-on: [Old](old.md) <!-- okf:id=$EDGE_ID -->
+
+            Setext H1 Appendix
+            ==================
+
+            H1 setext content.
+
+            Setext H2 Appendix
+            ------------------
+
+            H2 setext content.
+        """.trimIndent()
+        val existing = featureDocument("features/login.md", LOGIN_ID, "Login", existingBody)
+        val graph = WizardFeatureGraph(
+            features = listOf(
+                WizardFeature(
+                    LOGIN_ID,
+                    "Login",
+                    acceptanceCriteria = listOf(AcceptanceCriterion(LOGIN_CRITERION_ID, "New criterion")),
+                ),
+            ),
+        )
+
+        val encoded = codec.encode(graph, OkfBundle(listOf(existing)), timestamp)
+        val body = encoded.documents.single { it.frontmatter["type"] == "feature" }.body
+
+        assertTrue(body.contains("# Authored H1 Appendix\n\nH1 content."))
+        assertTrue(body.contains("Setext H1 Appendix\n==================\n\nH1 setext content."))
+        assertTrue(body.contains("Setext H2 Appendix\n------------------\n\nH2 setext content."))
+        assertTrue(body.contains("New criterion <!-- okf:id=$LOGIN_CRITERION_ID -->"))
+        assertFalse(body.contains("Old criterion"))
+        assertFalse(body.contains("[Old](old.md)"))
+    }
+
+    @Test
     fun `encode reuses uppercase existing UUID identity and preserves authored data`() {
         val original = featureDocument(
             path = "features/login.md",
@@ -429,6 +477,35 @@ class OkfFeatureCodecTest {
     }
 
     @Test
+    fun `decode reports an explicit id that collides with an earlier generated fallback`() {
+        val fallbackId = UUID.nameUUIDFromBytes(
+            "criterion:$LOGIN_ID:0:Fallback".toByteArray(StandardCharsets.UTF_8),
+        ).toString()
+        val document = featureDocument(
+            "features/login.md",
+            LOGIN_ID,
+            "Login",
+            """
+                ## Acceptance Criteria
+
+                - [ ] Fallback
+                - [ ] Explicit collision <!-- okf:id=$fallbackId -->
+
+                ## Relationships
+            """.trimIndent(),
+        )
+
+        val decoded = codec.decode(OkfBundle(listOf(document)), emptyMap())
+
+        assertEquals(listOf(fallbackId, fallbackId), decoded.graph.features.single().acceptanceCriteria.map { it.id })
+        assertTrue(
+            decoded.issues.any {
+                it.severity == OkfIssueSeverity.ERROR && it.message.contains("duplicate explicit okf:id")
+            },
+        )
+    }
+
+    @Test
     fun `encode output is independent of feature edge and existing document order`() {
         val reports = WizardFeature(REPORTS_ID, "Reports")
         val features = listOf(
@@ -490,6 +567,11 @@ class OkfFeatureCodecTest {
         assertTrue(encoded.byPath.getValue("index.md").body.contains("[$escapedLabel]"))
         assertTrue(encoded.byPath.getValue("features/index.md").body.contains("[$escapedLabel]"))
         assertTrue(dashboard.body.contains("[$escapedLabel]"))
+
+        val decoded = codec.decode(encoded, emptyMap())
+        assertTrue(decoded.issues.isEmpty(), decoded.issues.toString())
+        assertEquals(graph.edges, decoded.graph.edges)
+        assertEquals(title, decoded.graph.features.single { it.id == LOGIN_ID }.title)
     }
 
     @Test
@@ -508,6 +590,52 @@ class OkfFeatureCodecTest {
 
         assertTrue(exception.message.orEmpty().contains("single line"))
         assertTrue(exception.message.orEmpty().contains(LOGIN_CRITERION_ID))
+    }
+
+    @Test
+    fun `encode rejects invalid duplicate and dangling graph identities`() {
+        val validFeatures = listOf(
+            WizardFeature(
+                LOGIN_ID,
+                "Login",
+                acceptanceCriteria = listOf(AcceptanceCriterion(LOGIN_CRITERION_ID, "Login works")),
+            ),
+            WizardFeature(DASHBOARD_ID, "Dashboard"),
+        )
+        val cases = listOf(
+            "feature id" to WizardFeatureGraph(features = listOf(WizardFeature("invalid", "Login"))),
+            "criterion id" to WizardFeatureGraph(
+                features = listOf(
+                    WizardFeature(LOGIN_ID, "Login", acceptanceCriteria = listOf(AcceptanceCriterion("invalid", "Works"))),
+                ),
+            ),
+            "edge id" to WizardFeatureGraph(
+                features = validFeatures,
+                edges = listOf(WizardFeatureEdge("invalid", LOGIN_ID, DASHBOARD_ID)),
+            ),
+            "duplicate feature id" to WizardFeatureGraph(
+                features = listOf(WizardFeature(LOGIN_ID, "Login"), WizardFeature(LOGIN_ID.uppercase(), "Sign in")),
+            ),
+            "duplicate content id" to WizardFeatureGraph(
+                features = validFeatures,
+                edges = listOf(WizardFeatureEdge(LOGIN_CRITERION_ID, LOGIN_ID, DASHBOARD_ID)),
+            ),
+            "edge source" to WizardFeatureGraph(
+                features = validFeatures,
+                edges = listOf(WizardFeatureEdge(EDGE_ID, REPORTS_ID, DASHBOARD_ID)),
+            ),
+            "edge target" to WizardFeatureGraph(
+                features = validFeatures,
+                edges = listOf(WizardFeatureEdge(EDGE_ID, LOGIN_ID, REPORTS_ID)),
+            ),
+        )
+
+        cases.forEach { (expectedMessage, graph) ->
+            val exception = assertThrows<IllegalArgumentException>(expectedMessage) {
+                codec.encode(graph, null, timestamp)
+            }
+            assertTrue(exception.message.orEmpty().contains(expectedMessage), exception.message)
+        }
     }
 
     @Test
@@ -630,34 +758,6 @@ class OkfFeatureCodecTest {
             codec.encode(firstGraph, existing = null, timestamp = timestamp),
             codec.encode(movedGraph, existing = null, timestamp = timestamp),
         )
-    }
-
-    @Test
-    fun `encode escapes link labels and rejects multiline criteria`() {
-        val title = "Login [primary]\nflow"
-        val encoded = codec.encode(
-            WizardFeatureGraph(features = listOf(WizardFeature(LOGIN_ID, title))),
-            existing = null,
-            timestamp = timestamp,
-        )
-
-        assertEquals(title, encoded.documents.single { it.frontmatter["type"] == "feature" }.frontmatter["title"])
-        assertTrue(encoded.byPath.getValue("index.md").body.contains("[Login \\[primary\\] flow]"))
-        assertThrows<IllegalArgumentException> {
-            codec.encode(
-                WizardFeatureGraph(
-                    features = listOf(
-                        WizardFeature(
-                            LOGIN_ID,
-                            "Login",
-                            acceptanceCriteria = listOf(AcceptanceCriterion(LOGIN_CRITERION_ID, "First line\nsecond line")),
-                        ),
-                    ),
-                ),
-                null,
-                timestamp,
-            )
-        }
     }
 
     @Test

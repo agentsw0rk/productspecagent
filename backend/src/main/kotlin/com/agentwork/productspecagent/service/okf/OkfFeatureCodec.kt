@@ -25,7 +25,7 @@ import java.util.UUID
 class OkfFeatureCodec(private val parser: OkfParser) {
 
     fun encode(graph: WizardFeatureGraph, existing: OkfBundle?, timestamp: OffsetDateTime): OkfBundle {
-        validateAcceptanceCriteria(graph)
+        validateGraph(graph)
         val existingDocuments = existing.orEmpty()
         val generatedPaths = setOf(ROOT_INDEX_PATH, FEATURES_INDEX_PATH)
         val preservedDocuments = existingDocuments
@@ -44,19 +44,26 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         )
         val featurePaths = allocateFeaturePaths(sortedFeatures, generatedPaths + preservedDocuments.map { it.path })
         val pathsById = featurePaths.associate { it.id to it.path }
-        val featuresById = graph.features.associateBy { it.id }
+        val pathsByCanonicalId = featurePaths.associate { canonicalUuidKey(it.id)!! to it.path }
+        val featuresByCanonicalId = graph.features.associateBy { canonicalUuidKey(it.id)!! }
         val incomingEdges = graph.edges
-            .sortedWith(compareBy({ pathsById[it.from] ?: it.from }, { pathsById[it.to] ?: it.to }, { it.id }))
-            .groupBy { it.to }
+            .sortedWith(
+                compareBy(
+                    { pathsByCanonicalId[canonicalUuidKey(it.from)] ?: it.from },
+                    { pathsByCanonicalId[canonicalUuidKey(it.to)] ?: it.to },
+                    { it.id },
+                ),
+            )
+            .groupBy { canonicalUuidKey(it.to)!! }
 
         val featureDocuments = sortedFeatures.map { feature ->
             val existingDocument = canonicalUuidKey(feature.id)?.let(existingFeaturesById::get)
             val frontmatter = existingDocument?.frontmatter?.let(::LinkedHashMap) ?: linkedMapOf()
             val body = renderFeatureBody(
                 feature = feature,
-                incomingEdges = incomingEdges[feature.id].orEmpty(),
-                featuresById = featuresById,
-                pathsById = pathsById,
+                incomingEdges = incomingEdges[canonicalUuidKey(feature.id)].orEmpty(),
+                featuresById = featuresByCanonicalId,
+                pathsById = pathsByCanonicalId,
                 existingBody = existingDocument?.body,
             )
             val semanticChange = existingDocument == null ||
@@ -94,7 +101,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         val issues = mutableListOf<OkfIssue>()
         val decodedDocuments = mutableListOf<DecodedFeatureDocument>()
         val seenIds = mutableSetOf<String>()
-        val explicitContentIds = mutableSetOf<String>()
+        val assignedContentIds = mutableSetOf<String>()
 
         for (document in bundle.documents.filter { it.frontmatter["type"] == FEATURE_TYPE }.sortedBy { it.path }) {
             val id = requiredUuid(document, "id", issues) ?: continue
@@ -122,7 +129,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
                 scopes = decodeScopes(document, issues),
                 description = description,
                 scopeFields = decodeScopeFields(document, issues),
-                acceptanceCriteria = decodeAcceptanceCriteria(document, id, explicitContentIds, issues),
+                acceptanceCriteria = decodeAcceptanceCriteria(document, id, assignedContentIds, issues),
                 position = positions[id] ?: GraphPosition(),
             )
             decodedDocuments += DecodedFeatureDocument(document, feature)
@@ -130,7 +137,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
 
         val featureIdByPath = decodedDocuments.associate { it.document.path to it.feature.id }
         val edges = decodedDocuments.flatMap { decoded ->
-            decodeRelationships(decoded, featureIdByPath, explicitContentIds, issues)
+            decodeRelationships(decoded, featureIdByPath, assignedContentIds, issues)
         }
 
         return OkfFeatureDecodeResult(
@@ -170,15 +177,30 @@ class OkfFeatureCodec(private val parser: OkfParser) {
             frontmatter["legacy_ids"] !is List<*>
     }
 
-    private fun validateAcceptanceCriteria(graph: WizardFeatureGraph) {
+    private fun validateGraph(graph: WizardFeatureGraph) {
+        val featureIds = mutableSetOf<String>()
+        val contentIds = mutableSetOf<String>()
         graph.features.forEach { feature ->
+            val featureId = requireCanonicalId(feature.id, "feature id")
+            require(featureIds.add(featureId)) { "duplicate feature id: ${feature.id}" }
             feature.acceptanceCriteria.forEach { criterion ->
+                val criterionId = requireCanonicalId(criterion.id, "criterion id")
+                require(contentIds.add(criterionId)) { "duplicate content id: ${criterion.id}" }
                 require('\n' !in criterion.text && '\r' !in criterion.text) {
                     "acceptance criterion ${criterion.id} must be a single line"
                 }
             }
         }
+        graph.edges.forEach { edge ->
+            val edgeId = requireCanonicalId(edge.id, "edge id")
+            require(contentIds.add(edgeId)) { "duplicate content id: ${edge.id}" }
+            require(canonicalUuidKey(edge.from) in featureIds) { "edge source does not exist: ${edge.from}" }
+            require(canonicalUuidKey(edge.to) in featureIds) { "edge target does not exist: ${edge.to}" }
+        }
     }
+
+    private fun requireCanonicalId(id: String, label: String): String =
+        requireNotNull(canonicalUuidKey(id)) { "$label must be a canonical UUID: $id" }
 
     private fun allocateFeaturePaths(
         features: List<WizardFeature>,
@@ -233,10 +255,11 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         val criteria = feature.acceptanceCriteria.joinToString("\n") { criterion ->
             "- [ ] ${criterion.text} <!-- okf:id=${criterion.id} -->"
         }
-        val targetPath = pathsById.getValue(feature.id)
+        val targetPath = pathsById.getValue(canonicalUuidKey(feature.id)!!)
         val relationships = incomingEdges.mapNotNull { edge ->
-            val source = featuresById[edge.from] ?: return@mapNotNull null
-            val sourcePath = pathsById[edge.from] ?: return@mapNotNull null
+            val sourceId = canonicalUuidKey(edge.from) ?: return@mapNotNull null
+            val source = featuresById[sourceId] ?: return@mapNotNull null
+            val sourcePath = pathsById[sourceId] ?: return@mapNotNull null
             val relativePath = relativePath(targetPath, sourcePath)
             "- depends-on: [${markdownLabel(source.title)}]($relativePath) <!-- okf:id=${edge.id} -->"
         }.joinToString("\n")
@@ -306,7 +329,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
             ACCEPTANCE_CRITERIA_HEADING to acceptanceSection,
             RELATIONSHIPS_HEADING to relationshipsSection,
         )) {
-            sections.filter { it.heading == heading }.forEachIndexed { index, section ->
+            sections.filter { it.level == 2 && it.heading == heading }.forEachIndexed { index, section ->
                 replacements += SectionReplacement(section.start, section.end, if (index == 0) replacement else "")
             }
         }
@@ -315,10 +338,10 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         replacements.sortedByDescending { it.start }.forEach { replacement ->
             result = result.replaceRange(replacement.start, replacement.end, replacement.text)
         }
-        if (sections.none { it.heading == ACCEPTANCE_CRITERIA_HEADING }) {
+        if (sections.none { it.level == 2 && it.heading == ACCEPTANCE_CRITERIA_HEADING }) {
             result = appendSectionToBody(result, acceptanceSection)
         }
-        if (sections.none { it.heading == RELATIONSHIPS_HEADING }) {
+        if (sections.none { it.level == 2 && it.heading == RELATIONSHIPS_HEADING }) {
             result = appendSectionToBody(result, relationshipsSection)
         }
         return result
@@ -333,16 +356,31 @@ class OkfFeatureCodec(private val parser: OkfParser) {
 
     private fun markdownSections(body: String): List<MarkdownSection> {
         val lines = markdownLines(body)
-        val headings = lines.mapIndexedNotNull { index, line ->
-            line.heading?.let { Triple(index, line, it) }
+        val headings = mutableListOf<DetectedHeading>()
+        lines.forEachIndexed { index, line ->
+            if (line.inFence) return@forEachIndexed
+            val atx = atxHeading(line.text)
+            if (atx != null) {
+                headings += DetectedHeading(index, index, line.start, atx.level, atx.text)
+                return@forEachIndexed
+            }
+            val setextLevel = setextHeadingLevel(line.text) ?: return@forEachIndexed
+            val titleLine = lines.getOrNull(index - 1)
+                ?.takeIf { !it.inFence && it.text.isNotBlank() && atxHeading(it.text) == null }
+                ?: return@forEachIndexed
+            headings += DetectedHeading(index - 1, index, titleLine.start, setextLevel, titleLine.text.trim())
         }
-        return headings.mapIndexed { headingIndex, (lineIndex, line, heading) ->
-            val nextLineIndex = headings.getOrNull(headingIndex + 1)?.first ?: lines.size
+        return headings.mapIndexed { headingIndex, heading ->
+            val nextHeading = headings.getOrNull(headingIndex + 1)
             MarkdownSection(
-                heading = heading,
-                start = line.start,
-                end = headings.getOrNull(headingIndex + 1)?.second?.start ?: body.length,
-                contentLines = lines.subList(lineIndex + 1, nextLineIndex).filterNot { it.inFence },
+                heading = heading.text,
+                level = heading.level,
+                start = heading.start,
+                end = nextHeading?.start ?: body.length,
+                contentLines = lines.subList(
+                    heading.contentLineIndex + 1,
+                    nextHeading?.startLineIndex ?: lines.size,
+                ).filterNot { it.inFence },
             )
         }
     }
@@ -358,14 +396,12 @@ class OkfFeatureCodec(private val parser: OkfParser) {
             val text = body.substring(offset, contentEnd).removeSuffix("\r")
             val marker = fenceMarker(text)
             val inFence = fence != null || marker != null
-            val heading = if (fence == null && marker == null) levelTwoHeading(text) else null
-
             if (fence == null && marker != null) {
                 fence = marker
             } else if (fence != null && isClosingFence(text, fence)) {
                 fence = null
             }
-            result += MarkdownLine(offset, text, inFence, heading)
+            result += MarkdownLine(offset, text, inFence)
             offset = lineEnd
         }
         return result
@@ -386,15 +422,29 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         return length >= fence.length && content.drop(length).isBlank()
     }
 
-    private fun levelTwoHeading(line: String): String? {
+    private fun atxHeading(line: String): HeadingValue? {
         val content = line.dropWhile { it == ' ' }
-        if (line.length - content.length > 3 || !content.startsWith("##")) return null
-        if (content.length > 2 && !content[2].isWhitespace()) return null
-        return content.drop(2).trim().replace(Regex("\\s+#+\\s*$"), "").trim()
+        if (line.length - content.length > 3 || !content.startsWith('#')) return null
+        val level = content.takeWhile { it == '#' }.length
+        if (level !in 1..2) return null
+        if (content.length > level && !content[level].isWhitespace()) return null
+        val text = content.drop(level).trim().replace(Regex("\\s+#+\\s*$"), "").trim()
+        return HeadingValue(level, text)
+    }
+
+    private fun setextHeadingLevel(line: String): Int? {
+        val content = line.dropWhile { it == ' ' }
+        if (line.length - content.length > 3) return null
+        val marker = content.trimEnd()
+        return when {
+            marker.isNotEmpty() && marker.all { it == '=' } -> 1
+            marker.isNotEmpty() && marker.all { it == '-' } -> 2
+            else -> null
+        }
     }
 
     private fun managedSectionLines(body: String, heading: String): List<MarkdownLine> =
-        markdownSections(body).firstOrNull { it.heading == heading }?.contentLines.orEmpty()
+        markdownSections(body).firstOrNull { it.level == 2 && it.heading == heading }?.contentLines.orEmpty()
 
     private fun decodeScopes(document: OkfDocument, issues: MutableList<OkfIssue>): Set<FeatureScope> {
         val values = document.frontmatter["scopes"] ?: return emptySet()
@@ -433,7 +483,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
     private fun decodeAcceptanceCriteria(
         document: OkfDocument,
         featureId: String,
-        explicitContentIds: MutableSet<String>,
+        assignedContentIds: MutableSet<String>,
         issues: MutableList<OkfIssue>,
     ): List<AcceptanceCriterion> {
         val result = mutableListOf<AcceptanceCriterion>()
@@ -448,11 +498,14 @@ class OkfFeatureCodec(private val parser: OkfParser) {
             }
             val text = match.groupValues[1].trim()
             val explicitId = match.groupValues[2].takeIf { it.isNotBlank() }?.let(::canonicalUuid)
-            if (explicitId != null && !explicitContentIds.add(explicitId)) {
+            if (explicitId != null && !assignedContentIds.add(explicitId)) {
                 issues += error(document.path, "acceptanceCriteria", "duplicate explicit okf:id '$explicitId'")
             }
             val id = explicitId ?: stableUuid("criterion:$featureId:$occurrence:$text")
             if (explicitId == null) {
+                if (!assignedContentIds.add(id)) {
+                    issues += error(document.path, "acceptanceCriteria", "duplicate assigned okf:id '$id'")
+                }
                 issues += warning(
                     document.path,
                     "acceptanceCriteria",
@@ -468,7 +521,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
     private fun decodeRelationships(
         decoded: DecodedFeatureDocument,
         featureIdByPath: Map<String, String>,
-        explicitContentIds: MutableSet<String>,
+        assignedContentIds: MutableSet<String>,
         issues: MutableList<OkfIssue>,
     ): List<WizardFeatureEdge> {
         val result = mutableListOf<WizardFeatureEdge>()
@@ -476,28 +529,31 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         for (line in managedSectionLines(decoded.document.body, RELATIONSHIPS_HEADING)) {
             val textLine = line.text.trim()
             if (!MARKDOWN_LIST_ITEM.containsMatchIn(textLine)) continue
-            val match = RELATIONSHIP.matchEntire(textLine)
-            if (match == null) {
+            val relationship = parseRelationship(textLine)
+            if (relationship == null) {
                 issues += warning(decoded.document.path, "relationships", "unsupported list item in Relationships")
                 continue
             }
-            val explicitId = match.groupValues[2].takeIf { it.isNotBlank() }?.let(::canonicalUuid)
-            if (explicitId != null && !explicitContentIds.add(explicitId)) {
+            val explicitId = relationship.id?.let(::canonicalUuid)
+            if (explicitId != null && !assignedContentIds.add(explicitId)) {
                 issues += error(decoded.document.path, "relationships", "duplicate explicit okf:id '$explicitId'")
             }
-            val sourcePath = resolveRelativePath(decoded.document.path, match.groupValues[1])
+            val sourcePath = resolveRelativePath(decoded.document.path, relationship.path)
             val sourceId = sourcePath?.let(featureIdByPath::get)
             if (sourceId == null) {
                 issues += warning(
                     decoded.document.path,
                     "relationships",
-                    "depends-on relationship target '${match.groupValues[1]}' is not a decoded feature",
+                    "depends-on relationship target '${relationship.path}' is not a decoded feature",
                 )
                 occurrence += 1
                 continue
             }
             val id = explicitId ?: stableUuid("edge:$sourceId:${decoded.feature.id}:depends-on:$occurrence")
             if (explicitId == null) {
+                if (!assignedContentIds.add(id)) {
+                    issues += error(decoded.document.path, "relationships", "duplicate assigned okf:id '$id'")
+                }
                 issues += warning(
                     decoded.document.path,
                     "relationships",
@@ -508,6 +564,33 @@ class OkfFeatureCodec(private val parser: OkfParser) {
             occurrence += 1
         }
         return result
+    }
+
+    private fun parseRelationship(line: String): ParsedRelationship? {
+        if (!line.startsWith(RELATIONSHIP_PREFIX)) return null
+        var index = RELATIONSHIP_PREFIX.length
+        var escaped = false
+        while (index < line.length) {
+            val character = line[index]
+            if (escaped) {
+                escaped = false
+            } else if (character == '\\') {
+                escaped = true
+            } else if (character == ']') {
+                break
+            }
+            index += 1
+        }
+        if (index >= line.length || line.getOrNull(index + 1) != '(') return null
+        val pathStart = index + 2
+        val pathEnd = line.indexOf(')', pathStart)
+        if (pathEnd < 0) return null
+        val suffix = line.substring(pathEnd + 1)
+        val id = when {
+            suffix.isEmpty() -> null
+            else -> OKF_ID_SUFFIX.matchEntire(suffix)?.groupValues?.get(1) ?: return null
+        }
+        return ParsedRelationship(path = line.substring(pathStart, pathEnd), id = id)
     }
 
     private fun requiredUuid(
@@ -564,15 +647,25 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         val start: Int,
         val text: String,
         val inFence: Boolean,
-        val heading: String?,
     )
 
     private data class MarkdownSection(
         val heading: String,
+        val level: Int,
         val start: Int,
         val end: Int,
         val contentLines: List<MarkdownLine>,
     )
+
+    private data class DetectedHeading(
+        val startLineIndex: Int,
+        val contentLineIndex: Int,
+        val start: Int,
+        val level: Int,
+        val text: String,
+    )
+
+    private data class HeadingValue(val level: Int, val text: String)
 
     private data class SectionReplacement(
         val start: Int,
@@ -581,6 +674,8 @@ class OkfFeatureCodec(private val parser: OkfParser) {
     )
 
     private data class Fence(val marker: Char, val length: Int)
+
+    private data class ParsedRelationship(val path: String, val id: String?)
 
     private companion object {
         const val FEATURE_TYPE = "feature"
@@ -597,8 +692,7 @@ class OkfFeatureCodec(private val parser: OkfParser) {
         val ACCEPTANCE_CRITERION = Regex(
             "^- \\[ \\] (.*?)(?: \\Q<!-- okf:id=\\E([^>]+)\\Q -->\\E)?$",
         )
-        val RELATIONSHIP = Regex(
-            "^- depends-on: \\[[^]]+\\]\\(([^)]+)\\)(?: \\Q<!-- okf:id=\\E([^>]+)\\Q -->\\E)?$",
-        )
+        const val RELATIONSHIP_PREFIX = "- depends-on: ["
+        val OKF_ID_SUFFIX = Regex("^ \\Q<!-- okf:id=\\E([^>]+)\\Q -->\\E$")
     }
 }
