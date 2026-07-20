@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import org.eclipse.jgit.api.Git
@@ -49,7 +48,7 @@ class OkfGitInvalidBundleException(message: String, cause: Throwable? = null) : 
 @Service
 class OkfGitClient(private val properties: OkfGitProperties) {
 
-    private val projectLocks = ConcurrentHashMap<String, ReentrantLock>()
+    private val projectLocks = Array(LOCK_STRIPES) { ReentrantLock() }
 
     fun fetch(projectId: String, connection: OkfGitConnection): OkfGitSnapshot =
         withRepository(projectId, connection) { git ->
@@ -77,6 +76,7 @@ class OkfGitClient(private val properties: OkfGitProperties) {
         files: Map<String, String>,
         message: String,
     ): OkfGitCommitResult {
+        validateBundleLimits(files)
         val validatedFiles = files.mapKeys { (path, _) -> validateBundlePath(path) }
         require(message.isNotBlank()) { "commit message must not be blank" }
 
@@ -111,7 +111,7 @@ class OkfGitClient(private val properties: OkfGitProperties) {
     ): T {
         val checkout = checkoutPath(projectId)
         validateConnection(connection)
-        return projectLocks.computeIfAbsent(projectId) { ReentrantLock() }.withLock {
+        return projectLocks[Math.floorMod(projectId.hashCode(), projectLocks.size)].withLock {
             Files.createDirectories(properties.worktreeRoot.toAbsolutePath().normalize())
             if (!Files.exists(checkout.resolve(".git"))) {
                 clone(checkout, connection).close()
@@ -313,6 +313,23 @@ class OkfGitClient(private val properties: OkfGitProperties) {
         return normalized
     }
 
+    private fun validateBundleLimits(files: Map<String, String>) {
+        if (files.size > MAX_FILE_COUNT) {
+            throw OkfGitInvalidBundleException("OKF bundle exceeds $MAX_FILE_COUNT files")
+        }
+        var totalBytes = 0L
+        files.forEach { (path, content) ->
+            val bytes = content.toByteArray(StandardCharsets.UTF_8).size.toLong()
+            if (bytes > MAX_FILE_BYTES) {
+                throw OkfGitInvalidBundleException("OKF file exceeds $MAX_FILE_BYTES bytes: $path")
+            }
+            totalBytes += bytes
+            if (totalBytes > MAX_BUNDLE_BYTES) {
+                throw OkfGitInvalidBundleException("OKF bundle exceeds $MAX_BUNDLE_BYTES bytes")
+            }
+        }
+    }
+
     private fun credentialsProvider() =
         UsernamePasswordCredentialsProvider(properties.username, properties.token)
 
@@ -339,6 +356,7 @@ class OkfGitClient(private val properties: OkfGitProperties) {
         const val MAX_FILE_COUNT = 2_000
         const val MAX_FILE_BYTES = 4_000_000L
         const val MAX_BUNDLE_BYTES = 32_000_000L
+        const val LOCK_STRIPES = 64
         val SUCCESSFUL_PUSH_STATUSES = setOf(RemoteRefUpdate.Status.OK, RemoteRefUpdate.Status.UP_TO_DATE)
         val REMOTE_ADVANCED_STATUSES = setOf(
             RemoteRefUpdate.Status.REJECTED_NONFASTFORWARD,

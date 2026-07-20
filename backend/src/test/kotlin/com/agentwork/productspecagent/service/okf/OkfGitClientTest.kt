@@ -202,6 +202,35 @@ class OkfGitClientTest {
     }
 
     @Test
+    fun `rejects outbound snapshots that cannot be read back`() {
+        val remote = seedBareRemote(tempDir.resolve("remote.git"))
+        val client = OkfGitClient(properties(tempDir.resolve("worktrees")))
+        val connection = OkfGitConnection(remote.toUri().toString())
+        val base = client.fetch("project-9", connection)
+
+        assertThrows(OkfGitInvalidBundleException::class.java) {
+            client.commitAndPush(
+                "project-9",
+                connection,
+                base.commit,
+                mapOf("oversized.md" to "a".repeat(4_000_001)),
+                "oversized",
+            )
+        }
+        assertThrows(OkfGitInvalidBundleException::class.java) {
+            client.commitAndPush(
+                "project-9",
+                connection,
+                base.commit,
+                (1..2_001).associate { "feature-$it.md" to "# $it\n" },
+                "too many files",
+            )
+        }
+
+        assertEquals(base, client.fetch("project-9", connection))
+    }
+
+    @Test
     fun `serializes concurrent operations for the same project`() {
         val remote = seedBareRemote(tempDir.resolve("remote.git"))
         val client = OkfGitClient(properties(tempDir.resolve("worktrees")))
