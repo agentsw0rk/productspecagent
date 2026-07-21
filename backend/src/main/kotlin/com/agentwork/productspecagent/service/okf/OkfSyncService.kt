@@ -5,6 +5,7 @@ import com.agentwork.productspecagent.domain.okf.OkfChangeset
 import com.agentwork.productspecagent.domain.okf.OkfChangesetKind
 import com.agentwork.productspecagent.domain.okf.OkfChangesetStatus
 import com.agentwork.productspecagent.domain.okf.OkfConflict
+import com.agentwork.productspecagent.domain.okf.OkfConflictResolution
 import com.agentwork.productspecagent.domain.okf.OkfFileOperation
 import com.agentwork.productspecagent.domain.okf.OkfMode
 import com.agentwork.productspecagent.domain.okf.OkfOperationType
@@ -12,13 +13,18 @@ import com.agentwork.productspecagent.domain.okf.OkfProjectState
 import com.agentwork.productspecagent.domain.okf.OkfSyncStatus
 import com.agentwork.productspecagent.storage.OkfStateStorage
 import java.time.Instant
-import kotlinx.serialization.Serializable
 import org.springframework.stereotype.Service
 
-@Serializable
-enum class OkfConflictResolution { REMOTE, PROPOSED }
-
 class OkfPushException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+
+class OkfInvalidRemoteBundleException(message: String) : RuntimeException(message)
+
+class OkfValidationException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+
+class OkfPendingChangesException(projectId: String) :
+    RuntimeException("project has pending OKF changes: $projectId")
+
+class OkfStaleRemoteException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
 class OkfNotConnectedException(projectId: String) :
     RuntimeException("project is not connected to an OKF Git repository: $projectId")
@@ -179,7 +185,7 @@ class OkfSyncService(
             }
             when (synchronized.syncStatus) {
                 OkfSyncStatus.CONFLICT -> throw OkfChangesetConflictException(changesetId)
-                OkfSyncStatus.INVALID_REMOTE -> throw OkfPushException("remote OKF bundle is invalid")
+                OkfSyncStatus.INVALID_REMOTE -> throw OkfInvalidRemoteBundleException("remote OKF bundle is invalid")
                 else -> Unit
             }
             val refreshed = stateStorage.loadPendingChangeset(projectId)
@@ -231,7 +237,7 @@ class OkfSyncService(
                     OkfGitCommitResult(advanced.commit, advanced.branch)
                 } else {
                     savePushFailedState(current, pending, exception)
-                    throw OkfPushException("remote advanced with different OKF content", exception)
+                    throw OkfStaleRemoteException("remote advanced with different OKF content", exception)
                 }
             } else {
                 savePushFailedState(current, pending, exception)

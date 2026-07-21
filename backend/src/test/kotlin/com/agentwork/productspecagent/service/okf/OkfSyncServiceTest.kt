@@ -4,6 +4,7 @@ import com.agentwork.productspecagent.domain.WizardFeature
 import com.agentwork.productspecagent.domain.WizardFeatureGraph
 import com.agentwork.productspecagent.domain.okf.OkfChangeset
 import com.agentwork.productspecagent.domain.okf.OkfChangesetKind
+import com.agentwork.productspecagent.domain.okf.OkfConflictResolution
 import com.agentwork.productspecagent.domain.okf.OkfFileOperation
 import com.agentwork.productspecagent.domain.okf.OkfGitConnection
 import com.agentwork.productspecagent.domain.okf.OkfMode

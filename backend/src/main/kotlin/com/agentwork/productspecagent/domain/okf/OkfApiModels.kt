@@ -3,6 +3,25 @@ package com.agentwork.productspecagent.domain.okf
 import kotlinx.serialization.Serializable
 
 @Serializable
+enum class OkfConflictResolution { REMOTE, PROPOSED }
+
+@Serializable
+data class ConnectOkfRequest(
+    val remoteUrl: String,
+    val baseBranch: String = "main",
+)
+
+@Serializable
+data class ResolveOkfConflictRequest(val resolution: OkfConflictResolution)
+
+@Serializable
+data class OkfStatusResponse(
+    val state: OkfProjectState,
+    val pending: OkfChangeset? = null,
+    val conflicts: List<OkfConflict> = emptyList(),
+)
+
+@Serializable
 data class OkfMigrationDocument(
     val sourceId: String,
     val documentId: String,

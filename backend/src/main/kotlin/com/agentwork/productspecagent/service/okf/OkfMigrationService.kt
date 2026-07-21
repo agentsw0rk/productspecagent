@@ -111,7 +111,7 @@ class OkfMigrationService(
                 )
                 return@withLock existing
             }
-            throw OkfMigrationException("project already has a pending OKF changeset: ${existing.id}")
+            throw OkfPendingChangesException(projectId)
         }
 
         val timestamp = clock.instant().toString()

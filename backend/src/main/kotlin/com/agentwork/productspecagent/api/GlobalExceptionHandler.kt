@@ -23,6 +23,22 @@ import com.agentwork.productspecagent.service.UnsupportedStepException
 import com.agentwork.productspecagent.service.WeakPasswordException
 import com.agentwork.productspecagent.service.WizardStepNotCurrentException
 import com.agentwork.productspecagent.service.WizardStepNotVisibleException
+import com.agentwork.productspecagent.service.OkfChangesetPendingException
+import com.agentwork.productspecagent.service.okf.OkfChangesetConflictException
+import com.agentwork.productspecagent.service.okf.OkfChangesetNotFoundException
+import com.agentwork.productspecagent.service.okf.OkfFeatureProposalException
+import com.agentwork.productspecagent.service.okf.OkfGitAuthenticationException
+import com.agentwork.productspecagent.service.okf.OkfGitException
+import com.agentwork.productspecagent.service.okf.OkfGitInvalidBundleException
+import com.agentwork.productspecagent.service.okf.OkfGitPushRejectedException
+import com.agentwork.productspecagent.service.okf.OkfGitRemoteAdvancedException
+import com.agentwork.productspecagent.service.okf.OkfInvalidRemoteBundleException
+import com.agentwork.productspecagent.service.okf.OkfMigrationException
+import com.agentwork.productspecagent.service.okf.OkfNotConnectedException
+import com.agentwork.productspecagent.service.okf.OkfPendingChangesException
+import com.agentwork.productspecagent.service.okf.OkfPushException
+import com.agentwork.productspecagent.service.okf.OkfStaleRemoteException
+import com.agentwork.productspecagent.service.okf.OkfValidationException
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.ResponseStatus
@@ -159,4 +175,45 @@ class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     fun handleAuthValidation(ex: RuntimeException): ErrorResponse =
         ErrorResponse("VALIDATION_ERROR", ex.message ?: "Ungültige Eingabe", Instant.now().toString())
+
+    @ExceptionHandler(
+        OkfValidationException::class,
+        OkfMigrationException::class,
+        OkfFeatureProposalException::class,
+    )
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    fun handleOkfValidation(ex: RuntimeException): ErrorResponse =
+        ErrorResponse("OKF_VALIDATION_ERROR", ex.message ?: "Invalid OKF input", Instant.now().toString())
+
+    @ExceptionHandler(OkfChangesetNotFoundException::class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    fun handleOkfChangesetNotFound(ex: OkfChangesetNotFoundException): ErrorResponse =
+        ErrorResponse("OKF_CHANGESET_NOT_FOUND", ex.message ?: "OKF changeset not found", Instant.now().toString())
+
+    @ExceptionHandler(
+        OkfPendingChangesException::class,
+        OkfChangesetPendingException::class,
+        OkfChangesetConflictException::class,
+        OkfGitRemoteAdvancedException::class,
+        OkfStaleRemoteException::class,
+        OkfNotConnectedException::class,
+    )
+    @ResponseStatus(HttpStatus.CONFLICT)
+    fun handleOkfConflict(ex: RuntimeException): ErrorResponse =
+        ErrorResponse("OKF_CONFLICT", ex.message ?: "OKF state conflict", Instant.now().toString())
+
+    @ExceptionHandler(OkfGitInvalidBundleException::class, OkfInvalidRemoteBundleException::class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    fun handleInvalidOkfRemote(ex: RuntimeException): ErrorResponse =
+        ErrorResponse("OKF_INVALID_REMOTE", ex.message ?: "Remote OKF bundle is invalid", Instant.now().toString())
+
+    @ExceptionHandler(
+        OkfGitAuthenticationException::class,
+        OkfGitPushRejectedException::class,
+        OkfPushException::class,
+        OkfGitException::class,
+    )
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    fun handleOkfGitFailure(ex: RuntimeException): ErrorResponse =
+        ErrorResponse("OKF_GIT_FAILURE", ex.message ?: "OKF Git operation failed", Instant.now().toString())
 }
