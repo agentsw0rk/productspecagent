@@ -12,6 +12,7 @@ import com.agentwork.productspecagent.domain.okf.OkfOperationType
 import com.agentwork.productspecagent.domain.okf.OkfProjectState
 import com.agentwork.productspecagent.domain.okf.OkfSyncStatus
 import com.agentwork.productspecagent.storage.OkfStateStorage
+import com.agentwork.productspecagent.storage.ProjectStorage
 import java.time.Instant
 import org.springframework.stereotype.Service
 
@@ -42,6 +43,7 @@ class OkfSyncService(
     private val projectionService: OkfProjectionService,
     private val planner: OkfThreeWayPlanner,
     private val parser: OkfParser,
+    private val projectStorage: ProjectStorage? = null,
 ) {
 
     fun status(projectId: String): OkfProjectState = stateStorage.loadState(projectId)
@@ -587,8 +589,10 @@ class OkfSyncService(
         val pending = stateStorage.loadPendingChangeset(projectId)
         val current = stateStorage.loadState(projectId)
         if (!force && pending?.id != approved.id && current.pendingChangesetId != approved.id) {
+            cleanupLegacyFeatureDocs(projectId, approved)
             return approved
         }
+        cleanupLegacyFeatureDocs(projectId, approved)
         if (pending?.id == approved.id) {
             stateStorage.deletePendingChangeset(projectId)
         }
@@ -608,6 +612,12 @@ class OkfSyncService(
             ),
         )
         return approved
+    }
+
+    private fun cleanupLegacyFeatureDocs(projectId: String, approved: OkfChangeset) {
+        if (approved.kind == OkfChangesetKind.MIGRATION) {
+            projectStorage?.deleteLegacyFeatureDocs(projectId)
+        }
     }
 
     private fun saveState(state: OkfProjectState): OkfProjectState {

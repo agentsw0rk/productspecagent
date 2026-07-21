@@ -1,6 +1,9 @@
 package com.agentwork.productspecagent.api
 
 import com.agentwork.productspecagent.storage.ObjectStore
+import com.agentwork.productspecagent.domain.okf.OkfMode
+import com.agentwork.productspecagent.domain.okf.OkfProjectState
+import com.agentwork.productspecagent.storage.OkfStateStorage
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -18,6 +21,7 @@ class FileControllerTest {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var objectStore: ObjectStore
+    @Autowired lateinit var okfStateStorage: OkfStateStorage
 
     private val createdProjectIds = mutableListOf<String>()
 
@@ -91,6 +95,21 @@ class FileControllerTest {
             // frontend's GET /files/<path> would 404
             .andExpect(jsonPath("$[?(@.name == 'docs')].children[?(@.name == 'uploads')].children[?(@.name == 'notes.md')].path").value("docs/uploads/notes.md"))
             .andExpect(jsonPath("$[?(@.name == 'docs')].children[?(@.name == 'uploads')].path").value("docs/uploads"))
+    }
+
+    @Test
+    fun `GET files exposes canonical okf bundle for active project`() {
+        val pid = createProject()
+        okfStateStorage.saveState(OkfProjectState(pid, mode = OkfMode.OKF_ACTIVE))
+        objectStore.put("projects/$pid/docs/okf/index.md", "# Open Knowledge".toByteArray())
+
+        mockMvc.perform(get("/api/v1/projects/$pid/files"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.name == 'docs')].children[?(@.name == 'okf')].children[?(@.name == 'index.md')]").exists())
+
+        mockMvc.perform(get("/api/v1/projects/$pid/files/docs/okf/index.md"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content").value("# Open Knowledge"))
     }
 
     @Test

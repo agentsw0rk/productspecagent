@@ -2,7 +2,10 @@ package com.agentwork.productspecagent.service
 
 import com.agentwork.productspecagent.domain.*
 import com.agentwork.productspecagent.export.DocsScaffoldGenerator
+import com.agentwork.productspecagent.domain.okf.OkfMode
+import com.agentwork.productspecagent.domain.okf.OkfProjectState
 import com.agentwork.productspecagent.storage.InMemoryObjectStore
+import com.agentwork.productspecagent.storage.OkfStateStorage
 import com.agentwork.productspecagent.storage.ProjectStorage
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Assertions.*
@@ -211,5 +214,32 @@ class ProjectServiceTest {
         assertTrue("docs/design/manifest.json" in paths, "manifest was deleted")
         assertTrue("docs/design/Scheduler.html" in paths, "html was deleted")
         assertTrue("docs/design/design-canvas.jsx" in paths, "jsx was deleted")
+    }
+
+    @Test
+    fun `active okf project suppresses legacy feature scaffold only`() {
+        val objectStore = InMemoryObjectStore()
+        val activeStorage = ProjectStorage(objectStore)
+        val okfStateStorage = OkfStateStorage(objectStore)
+        val activeService = ProjectService(
+            activeStorage,
+            DocsScaffoldGenerator(),
+            okfStateStorage = okfStateStorage,
+        )
+        val projectId = activeService.createProject("OKF Project").project.id
+        activeStorage.saveDocsFile(projectId, "docs/tasks/task-1.json", "{}")
+        activeStorage.saveDocsFile(projectId, "docs/uploads/source.txt", "source")
+        activeStorage.saveDocsFile(projectId, "docs/design/screen.html", "<html/>")
+        activeStorage.saveDocsFile(projectId, "docs/okf/index.md", "# OKF")
+        okfStateStorage.saveState(OkfProjectState(projectId, mode = OkfMode.OKF_ACTIVE))
+
+        activeService.regenerateDocsScaffold(projectId)
+
+        val paths = activeStorage.listDocsFiles(projectId).map { it.first }
+        assertFalse(paths.any { it.startsWith("docs/features/") })
+        assertTrue("docs/tasks/task-1.json" in paths)
+        assertTrue("docs/uploads/source.txt" in paths)
+        assertTrue("docs/design/screen.html" in paths)
+        assertTrue("docs/okf/index.md" in paths)
     }
 }

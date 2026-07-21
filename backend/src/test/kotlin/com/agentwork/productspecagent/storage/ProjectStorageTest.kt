@@ -153,4 +153,24 @@ class ProjectStorageTest : S3TestSupport() {
 
         assertTrue(loaded.graphmeshEnabled)
     }
+
+    @Test
+    fun `deleteLegacyFeatureDocs removes only the legacy feature prefix`() {
+        storage.saveDocsFile("p1", "docs/features/feature.md", "feature")
+        storage.saveDocsFile("p1", "docs/tasks/task.json", "task")
+
+        storage.deleteLegacyFeatureDocs("p1")
+
+        assertEquals(listOf("docs/tasks/task.json"), storage.listDocsFiles("p1").map { it.first })
+    }
+
+    @Test
+    fun `deleteLegacyFeatureDocs preserves other docs directories`() {
+        storage.saveDocsFile("p1", "docs/features/feature.md", "feature")
+        storage.saveDocsFile("p1", "docs/okf/index.md", "okf")
+
+        storage.deleteLegacyFeatureDocs("p1")
+
+        assertEquals(listOf("docs/okf/index.md"), storage.listDocsFiles("p1").map { it.first })
+    }
 }

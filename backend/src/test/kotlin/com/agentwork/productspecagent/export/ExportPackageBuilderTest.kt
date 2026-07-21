@@ -2,12 +2,20 @@ package com.agentwork.productspecagent.export
 
 import com.agentwork.productspecagent.domain.AssetBundleManifest
 import com.agentwork.productspecagent.domain.AssetBundleScope
+import com.agentwork.productspecagent.domain.WizardFeatureGraph
 import com.agentwork.productspecagent.storage.AssetBundleStorage
+import com.agentwork.productspecagent.domain.okf.OkfMode
+import com.agentwork.productspecagent.domain.okf.OkfProjectState
+import com.agentwork.productspecagent.storage.OkfStateStorage
+import com.agentwork.productspecagent.storage.OkfProjectionStorage
+import com.agentwork.productspecagent.service.okf.OkfFeatureCodec
+import com.agentwork.productspecagent.service.okf.OkfParser
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import java.io.ByteArrayInputStream
+import java.time.OffsetDateTime
 import java.util.zip.ZipInputStream
 
 @SpringBootTest
@@ -16,6 +24,10 @@ class ExportPackageBuilderTest {
     @Autowired lateinit var packageBuilder: ExportPackageBuilder
     @Autowired lateinit var projectService: com.agentwork.productspecagent.service.ProjectService
     @Autowired lateinit var assetBundleStorage: AssetBundleStorage
+    @Autowired lateinit var okfStateStorage: OkfStateStorage
+    @Autowired lateinit var okfProjectionStorage: OkfProjectionStorage
+    @Autowired lateinit var okfFeatureCodec: OkfFeatureCodec
+    @Autowired lateinit var okfParser: OkfParser
 
     @Test
     fun `project export returns named zip package with agent markdowns`() {
@@ -107,6 +119,28 @@ class ExportPackageBuilderTest {
         assertThat(entries["CLAUDE.md"]!!.toString(Charsets.UTF_8)).contains("# Custom CLAUDE")
         assertThat(entries["AGENTS.md"]!!.toString(Charsets.UTF_8)).contains("# Custom AGENTS")
         assertThat(entries["implementation-order.md"]!!.toString(Charsets.UTF_8)).contains("# Custom Order")
+    }
+
+    @Test
+    fun `project export includes canonical okf bundle`() {
+        val projectId = projectService.createProject("OKF Export").project.id
+        val graph = WizardFeatureGraph(emptyList(), emptyList())
+        val bundle = okfFeatureCodec.encode(graph, null, OffsetDateTime.parse("2026-07-21T00:00:00Z"))
+        okfProjectionStorage.replaceRawFiles(
+            projectId,
+            bundle.documents.associate { it.path to okfParser.render(it) },
+        )
+        okfProjectionStorage.saveFeatureProjection(projectId, graph)
+        okfStateStorage.saveState(OkfProjectState(projectId, mode = OkfMode.OKF_ACTIVE))
+        projectService.regenerateDocsScaffold(projectId)
+
+        val entries = zipEntries(packageBuilder.exportProject(projectId).bytes)
+
+        assertThat(entries.keys).contains(
+            "okf-export/docs/okf/index.md",
+            "okf-export/docs/okf/features/index.md",
+        )
+        assertThat(entries.keys.none { it.startsWith("okf-export/docs/features/") }).isTrue()
     }
 
     private fun zipEntries(zipBytes: ByteArray): Map<String, ByteArray> {

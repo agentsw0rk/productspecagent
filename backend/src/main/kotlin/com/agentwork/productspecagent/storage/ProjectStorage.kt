@@ -104,6 +104,10 @@ class ProjectStorage(private val objectStore: ObjectStore) {
         objectStore.delete(docsKey(projectId, relativePath))
     }
 
+    fun deleteLegacyFeatureDocs(projectId: String) {
+        objectStore.deletePrefix("${projectPrefix(projectId)}docs/features/")
+    }
+
     /** Returns every doc file as `(relativePath, bytes)` pairs. Excludes `.index.json` (UploadStorage internals). */
     fun listDocsFiles(projectId: String): List<Pair<String, ByteArray>> {
         val docsPrefix = docsPrefix(projectId)

@@ -15,8 +15,10 @@ import com.agentwork.productspecagent.storage.InMemoryObjectStore
 import com.agentwork.productspecagent.storage.OkfPresentationStorage
 import com.agentwork.productspecagent.storage.OkfProjectionStorage
 import com.agentwork.productspecagent.storage.OkfStateStorage
+import com.agentwork.productspecagent.storage.ProjectStorage
 import java.time.OffsetDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -283,6 +285,8 @@ class OkfSyncServiceTest {
     @Test
     fun `successful migration approval activates only after readback projection and is idempotent`() {
         val fixture = fixture(baseCommit = "c1", mode = OkfMode.MIGRATION_READY)
+        fixture.projectStorage.saveDocsFile(PROJECT_ID, "docs/features/00-feature-set-overview.md", "legacy")
+        fixture.projectStorage.saveDocsFile(PROJECT_ID, "docs/tasks/task-1.json", "{}")
         val baseFiles = files()
         val proposedFiles = files(feature("Login"))
         fixture.stateStorage.savePendingChangeset(
@@ -308,6 +312,9 @@ class OkfSyncServiceTest {
         assertEquals(approved, retried)
         assertEquals("c2", approved.approvedCommit)
         assertEquals(OkfMode.OKF_ACTIVE, fixture.stateStorage.loadState(PROJECT_ID).mode)
+        val docsPaths = fixture.projectStorage.listDocsFiles(PROJECT_ID).map { it.first }
+        assertFalse(docsPaths.any { it.startsWith("docs/features/") })
+        assertTrue("docs/tasks/task-1.json" in docsPaths)
         assertEquals("Login", fixture.projectionStorage.loadFeatureProjection(PROJECT_ID)!!.features.single().title)
         verify(fixture.git, times(1)).commitAndPush(eq(PROJECT_ID), eq(CONNECTION), eq("c1"), any(), any())
 
@@ -368,6 +375,25 @@ class OkfSyncServiceTest {
         assertEquals(null, fixture.stateStorage.loadPendingChangeset(PROJECT_ID))
         assertEquals(OkfMode.OKF_ACTIVE, fixture.stateStorage.loadState(PROJECT_ID).mode)
         assertEquals("c2", fixture.stateStorage.loadState(PROJECT_ID).baseCommit)
+    }
+
+    @Test
+    fun `approved migration receipt retry repeats legacy scaffold cleanup`() {
+        val fixture = fixture(baseCommit = "c2", mode = OkfMode.OKF_ACTIVE)
+        val approved = changeset(
+            kind = OkfChangesetKind.MIGRATION,
+            baseCommit = "c1",
+            operations = emptyList(),
+        ).copy(
+            status = com.agentwork.productspecagent.domain.okf.OkfChangesetStatus.APPROVED,
+            approvedCommit = "c2",
+        )
+        fixture.stateStorage.saveApprovedChangeset(approved)
+        fixture.projectStorage.saveDocsFile(PROJECT_ID, "docs/features/00-feature-set-overview.md", "legacy")
+
+        fixture.service.approve(PROJECT_ID, CHANGESET_ID)
+
+        assertFalse(fixture.projectStorage.listDocsFiles(PROJECT_ID).any { it.first.startsWith("docs/features/") })
     }
 
     @Test
@@ -469,6 +495,7 @@ class OkfSyncServiceTest {
         val projectionStorage = OkfProjectionStorage(objectStore, parser)
         val stateStorage = OkfStateStorage(objectStore)
         val presentationStorage = OkfPresentationStorage(objectStore)
+        val projectStorage = ProjectStorage(objectStore)
         val codec = OkfFeatureCodec(parser)
         val projectionService = OkfProjectionService(
             projectionStorage,
@@ -487,8 +514,9 @@ class OkfSyncServiceTest {
             projectionService,
             OkfThreeWayPlanner(codec),
             parser,
+            projectStorage,
         )
-        return Fixture(git, stateStorage, projectionStorage, service)
+        return Fixture(git, stateStorage, projectionStorage, projectStorage, service)
     }
 
     private fun feature(title: String, id: String = LOGIN_ID) = WizardFeature(id = id, title = title, description = "$title works.")
@@ -561,6 +589,7 @@ class OkfSyncServiceTest {
         val git: OkfGitClient,
         val stateStorage: OkfStateStorage,
         val projectionStorage: OkfProjectionStorage,
+        val projectStorage: ProjectStorage,
         val service: OkfSyncService,
     )
 

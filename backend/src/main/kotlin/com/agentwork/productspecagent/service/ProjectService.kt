@@ -3,11 +3,14 @@ package com.agentwork.productspecagent.service
 import com.agentwork.productspecagent.domain.*
 import com.agentwork.productspecagent.domain.WizardData
 import com.agentwork.productspecagent.domain.WizardStepData
+import com.agentwork.productspecagent.domain.okf.OkfMode
 import com.agentwork.productspecagent.export.DocsScaffoldGenerator
 import com.agentwork.productspecagent.export.ScaffoldContext
 import com.agentwork.productspecagent.export.ScaffoldContextBuilder
 import com.agentwork.productspecagent.infrastructure.graphmesh.GraphMeshConfig
 import com.agentwork.productspecagent.storage.ProjectStorage
+import com.agentwork.productspecagent.storage.OkfStateStorage
+import com.agentwork.productspecagent.service.okf.OkfProjectLocks
 import kotlinx.serialization.json.JsonPrimitive
 import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
@@ -28,7 +31,8 @@ class ProjectService(
     private val storage: ProjectStorage,
     private val scaffoldGenerator: DocsScaffoldGenerator? = null,
     @Lazy private val scaffoldContextBuilder: ScaffoldContextBuilder? = null,
-    private val graphMeshConfig: GraphMeshConfig = GraphMeshConfig(enabled = false, url = "", requestTimeout = java.time.Duration.ofSeconds(30))
+    private val graphMeshConfig: GraphMeshConfig = GraphMeshConfig(enabled = false, url = "", requestTimeout = java.time.Duration.ofSeconds(30)),
+    private val okfStateStorage: OkfStateStorage? = null,
 ) {
 
     fun createProject(name: String): ProjectResponse {
@@ -69,38 +73,44 @@ class ProjectService(
     }
 
     private fun generateDocsScaffold(projectId: String, projectName: String) {
-        val generator = scaffoldGenerator ?: return
-        val context = if (scaffoldContextBuilder != null) {
-            scaffoldContextBuilder.build(projectId)
-        } else {
-            ScaffoldContext(
-                projectName = projectName,
-                features = emptyList(),
-                techStack = "See SPEC.md for tech stack details.",
-            )
-        }
-        val entries = generator.generate(context)
-
-        // Diff-sync: drop ORPHANED files only in subdirectories the generator actually
-        // manages. Critical: docs/clarifications/, docs/decisions/, docs/tasks/, and
-        // docs/uploads/ also live under projects/{id}/docs/ but are owned by other
-        // storages — they must never be touched here.
-        val desired = entries.keys
-        val managedDirs = desired.map { it.substringBeforeLast('/') + "/" }.toSet()
-        val onDisk = storage.listDocsFiles(projectId).map { it.first }
-        for (path in onDisk) {
-            if (path in deprecatedScaffoldDocs) {
-                storage.deleteDocsFile(projectId, path)
-                continue
+        OkfProjectLocks.withLock(projectId) {
+            if (okfStateStorage?.loadState(projectId)?.mode == OkfMode.OKF_ACTIVE) {
+                storage.deleteLegacyFeatureDocs(projectId)
+                return@withLock
             }
-            if (path in desired) continue
-            if (managedDirs.any { path.startsWith(it) }) {
-                storage.deleteDocsFile(projectId, path)
+            val generator = scaffoldGenerator ?: return@withLock
+            val context = if (scaffoldContextBuilder != null) {
+                scaffoldContextBuilder.build(projectId)
+            } else {
+                ScaffoldContext(
+                    projectName = projectName,
+                    features = emptyList(),
+                    techStack = "See SPEC.md for tech stack details.",
+                )
             }
-        }
+            val entries = generator.generate(context)
 
-        for ((path, content) in entries) {
-            storage.saveDocsFile(projectId, path, content)
+            // Diff-sync: drop ORPHANED files only in subdirectories the generator actually
+            // manages. Critical: docs/clarifications/, docs/decisions/, docs/tasks/, and
+            // docs/uploads/ also live under projects/{id}/docs/ but are owned by other
+            // storages — they must never be touched here.
+            val desired = entries.keys
+            val managedDirs = desired.map { it.substringBeforeLast('/') + "/" }.toSet()
+            val onDisk = storage.listDocsFiles(projectId).map { it.first }
+            for (path in onDisk) {
+                if (path in deprecatedScaffoldDocs) {
+                    storage.deleteDocsFile(projectId, path)
+                    continue
+                }
+                if (path in desired) continue
+                if (managedDirs.any { path.startsWith(it) }) {
+                    storage.deleteDocsFile(projectId, path)
+                }
+            }
+
+            for ((path, content) in entries) {
+                storage.saveDocsFile(projectId, path, content)
+            }
         }
     }
 
