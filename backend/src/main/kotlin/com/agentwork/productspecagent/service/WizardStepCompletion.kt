@@ -17,6 +17,8 @@ import com.agentwork.productspecagent.domain.WizardProgressionView
 import com.agentwork.productspecagent.domain.WizardStepData
 import com.agentwork.productspecagent.domain.WizardStepView
 import com.agentwork.productspecagent.domain.emptyWizardProgressionView
+import com.agentwork.productspecagent.service.okf.OkfFeatureService
+import com.agentwork.productspecagent.service.okf.OkfProjectLocks
 import com.agentwork.productspecagent.storage.DesignWorkbenchStorage
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -62,6 +64,9 @@ class WizardStepNotCurrentException(
     currentStep: String?,
 ) : RuntimeException("Wizard step ${step.name} is not the current wizard step (${currentStep ?: "none"})")
 
+class OkfChangesetPendingException(projectId: String) :
+    RuntimeException("feature changes for project $projectId must be approved before completing the step")
+
 interface WizardCompletionAgent {
     suspend fun respond(systemPrompt: String, userPrompt: String): String
 }
@@ -91,6 +96,7 @@ class WizardStepCompletionService(
     private val designWorkbenchStorage: DesignWorkbenchStorage,
     private val taskService: TaskService? = null,
     private val progressionPolicy: WizardProgressionPolicy = WizardProgressionPolicy(),
+    private val okfFeatureService: OkfFeatureService? = null,
 ) : WizardStepCompletion, WizardProgression {
 
     private val logger = LoggerFactory.getLogger(WizardStepCompletionService::class.java)
@@ -154,6 +160,20 @@ class WizardStepCompletionService(
             stepName, decisionTitle, clarification?.first, isLastStep, hasAnsweredBlocker
         )
 
+        val commandFields = command.fields.mapValues { (_, value) -> WizardMarkdown.toJsonElement(value) }
+        syncWizardFeatureTasks(command.projectId, command.step, commandFields, wizardCategory)
+
+        val now = Instant.now().toString()
+        wizardService.saveStepData(
+            command.projectId,
+            stepName,
+            WizardStepData(
+                fields = commandFields,
+                completedAt = now,
+            ),
+        )
+        requireNoPendingFeatureChanges(command)
+
         var createdDecisionId: String? = null
         if (!isLastStep && !hasAnsweredBlocker && decisionTitle != null) {
             createdDecisionId = decisionService.createDecision(command.projectId, decisionTitle, command.step).id
@@ -168,19 +188,6 @@ class WizardStepCompletionService(
                 command.step,
             ).id
         }
-
-        val commandFields = command.fields.mapValues { (_, value) -> WizardMarkdown.toJsonElement(value) }
-        syncWizardFeatureTasks(command.projectId, command.step, commandFields, wizardCategory)
-
-        val now = Instant.now().toString()
-        wizardService.saveStepData(
-            command.projectId,
-            stepName,
-            WizardStepData(
-                fields = commandFields,
-                completedAt = now,
-            ),
-        )
 
         val createdBlockingArtifact = createdDecisionId != null || createdClarificationId != null
         if (createdBlockingArtifact) {
@@ -207,8 +214,8 @@ class WizardStepCompletionService(
                 else -> step
             }
         }
-        projectService.updateFlowState(
-            command.projectId,
+        updateFlowStateWithPendingGate(
+            command,
             flowState.copy(steps = updatedSteps, currentStep = nextStep ?: command.step),
         )
 
@@ -288,9 +295,7 @@ class WizardStepCompletionService(
             stepName,
             WizardStepData(fields = mergedFields, completedAt = now),
         )
-        decisions.forEach { decisionService.markApplied(command.projectId, it.id, appliedFields) }
-        clarifications.forEach { clarificationService.markApplied(command.projectId, it.id, appliedFields) }
-
+        requireNoPendingFeatureChanges(command)
         val isLastStep = plan.isTerminal(command.step)
         val nextStep = if (!isLastStep) plan.nextAfter(command.step) else null
         val updatedSteps = flowState.steps.map { step ->
@@ -300,10 +305,15 @@ class WizardStepCompletionService(
                 else -> step
             }
         }
-        projectService.updateFlowState(
-            command.projectId,
-            flowState.copy(steps = updatedSteps, currentStep = nextStep ?: command.step),
-        )
+        OkfProjectLocks.withLock(command.projectId) {
+            requireNoPendingFeatureChanges(command)
+            decisions.forEach { decisionService.markApplied(command.projectId, it.id, appliedFields) }
+            clarifications.forEach { clarificationService.markApplied(command.projectId, it.id, appliedFields) }
+            projectService.updateFlowState(
+                command.projectId,
+                flowState.copy(steps = updatedSteps, currentStep = nextStep ?: command.step),
+            )
+        }
         if (!isLastStep) {
             projectService.regenerateDocsScaffold(command.projectId)
         }
@@ -333,6 +343,7 @@ class WizardStepCompletionService(
         wizardCategory: String?,
     ) {
         if (step != FlowStepType.FEATURES || taskService == null) return
+        if (okfFeatureService?.isActive(projectId) == true) return
 
         val parsedFeatures = WizardFeatureParser.parse(
             fields.mapValues { (_, value) -> jsonElementToKotlin(value) },
@@ -341,6 +352,19 @@ class WizardStepCompletionService(
         if (parsedFeatures.isNotEmpty()) {
             logger.info("completeWizardStep(FEATURES) syncing {} wizard feature tasks", parsedFeatures.size)
             taskService.replaceWizardFeatureTasks(projectId, parsedFeatures)
+        }
+    }
+
+    private fun requireNoPendingFeatureChanges(command: CompleteWizardStep) {
+        if (command.step == FlowStepType.FEATURES && okfFeatureService?.hasPending(command.projectId) == true) {
+            throw OkfChangesetPendingException(command.projectId)
+        }
+    }
+
+    private fun updateFlowStateWithPendingGate(command: CompleteWizardStep, flowState: FlowState) {
+        OkfProjectLocks.withLock(command.projectId) {
+            requireNoPendingFeatureChanges(command)
+            projectService.updateFlowState(command.projectId, flowState)
         }
     }
 

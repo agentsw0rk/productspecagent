@@ -1,28 +1,43 @@
 package com.agentwork.productspecagent.service
 
 import com.agentwork.productspecagent.domain.*
+import com.agentwork.productspecagent.service.okf.OkfFeatureService
 import com.agentwork.productspecagent.service.okf.OkfProjectLocks
 import com.agentwork.productspecagent.storage.ProjectStorage
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.encodeToJsonElement
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 
 @Service
-class WizardService(private val storage: ProjectStorage) {
+class WizardService(
+    private val storage: ProjectStorage,
+    @Lazy private val okfFeatures: OkfFeatureService? = null,
+) {
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     fun getWizardData(projectId: String): WizardData = OkfProjectLocks.withLock(projectId) {
         storage.loadProject(projectId) ?: throw ProjectNotFoundException(projectId)
-        normalizeWizardData(storage.loadWizardData(projectId) ?: WizardData(projectId = projectId))
+        val legacy = normalizeWizardData(storage.loadWizardData(projectId) ?: WizardData(projectId = projectId))
+        overlayActiveFeatures(projectId, legacy)
     }
 
     fun saveWizardData(projectId: String, data: WizardData): WizardData = OkfProjectLocks.withLock(projectId) {
         storage.loadProject(projectId) ?: throw ProjectNotFoundException(projectId)
         val saved = normalizeWizardData(data.copy(projectId = projectId))
-        storage.saveWizardData(projectId, saved)
-        saved
+        if (okfFeatures?.isActive(projectId) == true) {
+            saved.steps["FEATURES"]?.let { okfFeatures.propose(projectId, graph(it)) }
+        }
+        val persisted = withoutActiveFeatureGraph(projectId, saved)
+        storage.saveWizardData(projectId, persisted)
+        overlayActiveFeatures(projectId, persisted)
     }
 
     fun saveStepData(projectId: String, stepName: String, stepData: WizardStepData): WizardData =
@@ -32,9 +47,50 @@ class WizardService(private val storage: ProjectStorage) {
             val updated = normalizeWizardData(
                 existing.copy(steps = existing.steps + (stepName to normalizeStepData(stepName, stepData)))
             )
-            storage.saveWizardData(projectId, updated)
-            updated
+            if (stepName == "FEATURES" && okfFeatures?.isActive(projectId) == true) {
+                okfFeatures.propose(projectId, graph(updated.steps.getValue(stepName)))
+            }
+            val persisted = withoutActiveFeatureGraph(projectId, updated)
+            storage.saveWizardData(projectId, persisted)
+            overlayActiveFeatures(projectId, persisted)
         }
+
+    private fun overlayActiveFeatures(projectId: String, data: WizardData): WizardData {
+        val service = okfFeatures?.takeIf { it.isActive(projectId) } ?: return data
+        val encoded = json.encodeToJsonElement(service.graph(projectId)) as JsonObject
+        val existing = data.steps["FEATURES"] ?: WizardStepData()
+        val step = existing.copy(
+            fields = existing.fields + mapOf(
+                "features" to (encoded["features"] ?: JsonArray(emptyList())),
+                "edges" to (encoded["edges"] ?: JsonArray(emptyList())),
+            ),
+        )
+        return data.copy(steps = data.steps + ("FEATURES" to step))
+    }
+
+    private fun withoutActiveFeatureGraph(projectId: String, data: WizardData): WizardData {
+        if (okfFeatures?.isActive(projectId) != true) return data
+        val legacyFeatureStep = storage.loadWizardData(projectId)?.steps?.get("FEATURES")
+        val featureStep = data.steps["FEATURES"] ?: legacyFeatureStep ?: return data
+        val legacyGraphFields = legacyFeatureStep?.fields.orEmpty()
+            .filterKeys { it == "features" || it == "edges" }
+        return data.copy(
+            steps = data.steps + (
+                "FEATURES" to featureStep.copy(
+                    fields = legacyGraphFields + (featureStep.fields - "features" - "edges"),
+                )
+            ),
+        )
+    }
+
+    private fun graph(stepData: WizardStepData): WizardFeatureGraph = json.decodeFromJsonElement(
+        JsonObject(
+            mapOf(
+                "features" to (stepData.fields["features"] ?: JsonArray(emptyList())),
+                "edges" to (stepData.fields["edges"] ?: JsonArray(emptyList())),
+            ),
+        ),
+    )
 
     private fun normalizeWizardData(data: WizardData): WizardData =
         data.copy(steps = data.steps.mapValues { (stepName, stepData) -> normalizeStepData(stepName, stepData) })

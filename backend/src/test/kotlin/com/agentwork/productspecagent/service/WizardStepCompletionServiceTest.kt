@@ -9,6 +9,7 @@ import com.agentwork.productspecagent.domain.ProductCategory
 import com.agentwork.productspecagent.domain.SpecTask
 import com.agentwork.productspecagent.domain.TaskType
 import com.agentwork.productspecagent.domain.WizardStepData
+import com.agentwork.productspecagent.service.okf.OkfFeatureService
 import com.agentwork.productspecagent.storage.ClarificationStorage
 import com.agentwork.productspecagent.storage.DecisionStorage
 import com.agentwork.productspecagent.storage.DesignWorkbenchStorage
@@ -21,6 +22,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 class WizardStepCompletionServiceTest {
 
@@ -821,7 +824,56 @@ class WizardStepCompletionServiceTest {
         Unit
     }
 
-    private fun createCompletion(agent: WizardCompletionAgent): WizardStepCompletion =
+    @Test
+    fun `active feature completion stops before flow mutation while a changeset is pending`() {
+        val project = projectService.createProject("Test")
+        setFlowProgress(
+            project.project.id,
+            FlowStepType.FEATURES,
+            setOf(FlowStepType.IDEA, FlowStepType.PROBLEM),
+        )
+        val okfFeatures = mock<OkfFeatureService>()
+        whenever(okfFeatures.isActive(project.project.id)).thenReturn(true)
+        whenever(okfFeatures.hasPending(project.project.id)).thenReturn(true)
+        val completion = createCompletion(
+            CapturingWizardAgent("Review.\n[DECISION_NEEDED]: Choose login policy"),
+            okfFeatures,
+        )
+
+        assertThatThrownBy {
+            runBlocking {
+                completion.complete(
+                    CompleteWizardStep(
+                        projectId = project.project.id,
+                        step = FlowStepType.FEATURES,
+                        fields = mapOf(
+                            "features" to listOf(
+                                mapOf(
+                                    "id" to "f-1",
+                                    "title" to "Login",
+                                    "description" to "Users can sign in.",
+                                    "scopes" to listOf("BACKEND"),
+                                ),
+                            ),
+                            "edges" to emptyList<Any>(),
+                        ),
+                    ),
+                )
+            }
+        }.isInstanceOf(OkfChangesetPendingException::class.java)
+
+        val flowState = projectService.getFlowState(project.project.id)
+        assertThat(flowState.currentStep).isEqualTo(FlowStepType.FEATURES)
+        assertThat(flowState.steps.first { it.stepType == FlowStepType.FEATURES }.status)
+            .isEqualTo(FlowStepStatus.IN_PROGRESS)
+        assertThat(taskService.listTasks(project.project.id)).isEmpty()
+        assertThat(decisionService.listDecisions(project.project.id)).isEmpty()
+    }
+
+    private fun createCompletion(
+        agent: WizardCompletionAgent,
+        okfFeatureService: OkfFeatureService? = null,
+    ): WizardStepCompletion =
         WizardStepCompletionService(
             contextBuilder = contextBuilder,
             projectService = projectService,
@@ -833,6 +885,7 @@ class WizardStepCompletionServiceTest {
             applyAgent = applyAgent,
             taskService = taskService,
             designWorkbenchStorage = designWorkbenchStorage,
+            okfFeatureService = okfFeatureService,
         )
 
     private fun setFlowProgress(
