@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bug, FolderTree, Loader2, RefreshCw } from "lucide-react";
+import { Bug, FolderTree, GitBranch, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileTree } from "./FileTree";
@@ -9,6 +9,7 @@ import { SpecFileViewer } from "./SpecFileViewer";
 import { listProjectFiles, type FileEntry } from "@/lib/api";
 import type { FlowState } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useOkfStore } from "@/lib/stores/okf-store";
 
 const HIDDEN_FOLDERS = new Set(["clarifications", "decisions", "tasks"]);
 
@@ -39,17 +40,33 @@ const STATUS_CONFIG: Record<ExplorerStatus, { variant: "ghost" | "default" | "su
 interface ExplorerPanelProps {
   projectId: string;
   flowState: FlowState | null;
+  reloadToken?: number;
 }
 
-export function ExplorerPanel({ projectId, flowState }: ExplorerPanelProps) {
+const OKF_STATUS_CONFIG = {
+  CLEAN: { variant: "success" as const, label: "OKF Clean" },
+  INCOMING: { variant: "default" as const, label: "Incoming" },
+  PROPOSAL_PENDING: { variant: "warning" as const, label: "Review" },
+  CONFLICT: { variant: "destructive" as const, label: "Konflikt" },
+  INVALID_REMOTE: { variant: "destructive" as const, label: "Remote fehlerhaft" },
+  PUSH_FAILED: { variant: "destructive" as const, label: "Push fehlgeschlagen" },
+};
+
+export function ExplorerPanel({ projectId, flowState, reloadToken = 0 }: ExplorerPanelProps) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewerPath, setViewerPath] = useState<string | null>(null);
   const [debug, setDebug] = useState(false);
+  const okfStatus = useOkfStore((state) => state.projectId === projectId ? state.status : null);
+  const refreshOkf = useOkfStore((state) => state.refresh);
+  const setOkfDialogOpen = useOkfStore((state) => state.setDialogOpen);
 
   const completedSteps = flowState?.steps.filter((s) => s.status === "COMPLETED").length ?? 0;
   const status: ExplorerStatus = loading ? "generating" : files.length > 0 ? "valid" : "idle";
   const statusConfig = STATUS_CONFIG[status];
+  const connectedOkf = okfStatus?.state.connection
+    ? OKF_STATUS_CONFIG[okfStatus.state.syncStatus]
+    : null;
 
   async function loadFiles() {
     setLoading(true);
@@ -64,8 +81,8 @@ export function ExplorerPanel({ projectId, flowState }: ExplorerPanelProps) {
   }
 
   useEffect(() => {
-    loadFiles();
-  }, [projectId, completedSteps]); // eslint-disable-line react-hooks/exhaustive-deps
+    void Promise.all([loadFiles(), refreshOkf(projectId)]);
+  }, [projectId, completedSteps, reloadToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
@@ -77,7 +94,18 @@ export function ExplorerPanel({ projectId, flowState }: ExplorerPanelProps) {
             <span className="text-xs font-semibold">Explorer</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+            <Badge variant={(connectedOkf ?? statusConfig).variant}>
+              {(connectedOkf ?? statusConfig).label}
+            </Badge>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              onClick={() => setOkfDialogOpen(true)}
+              title="OKF-Synchronisation"
+              aria-label="OKF-Synchronisation"
+            >
+              <GitBranch size={11} />
+            </Button>
             <Button
               size="icon-xs"
               variant="ghost"
@@ -87,7 +115,14 @@ export function ExplorerPanel({ projectId, flowState }: ExplorerPanelProps) {
             >
               <Bug size={11} />
             </Button>
-            <Button size="icon-xs" variant="ghost" onClick={loadFiles} disabled={loading}>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              onClick={loadFiles}
+              disabled={loading}
+              title="Dateien aktualisieren"
+              aria-label="Dateien aktualisieren"
+            >
               {loading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
             </Button>
           </div>

@@ -27,6 +27,8 @@ import { isCockpitReady } from "@/lib/project-cockpit";
 import { cn } from "@/lib/utils";
 import { useResizable } from "@/lib/hooks/use-resizable";
 import { ResizeHandle } from "@/components/layout/ResizeHandle";
+import { OkfSyncDialog } from "@/components/okf/OkfSyncDialog";
+import { useOkfStore } from "@/lib/stores/okf-store";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -44,6 +46,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
   const [showExport, setShowExport] = useState(false);
   const [showHandoff, setShowHandoff] = useState(false);
   const [showProjectOptions, setShowProjectOptions] = useState(false);
+  const [okfRevision, setOkfRevision] = useState(0);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [rightTab, setRightTab] = useState<"chat" | "decisions" | "clarifications" | "tasks" | "checks" | "documents" | "living-sync">("chat");
   const { decisions, loadDecisions: loadDecs, reset: resetDecs } = useDecisionStore();
@@ -58,6 +61,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
     resetClars();
     resetTasks();
     useWizardStore.getState().reset();
+    useOkfStore.getState().reset();
     useDesignWorkbenchStore.getState().reset();
     loadProject(id);
     loadDecs(id);
@@ -173,7 +177,7 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
         {/* Explorer Panel */}
         {showExplorer && (
           <div className="w-60 shrink-0 border-r border-border bg-card overflow-hidden animate-slide-in-left">
-            <ExplorerPanel projectId={id} flowState={flowState} />
+            <ExplorerPanel projectId={id} flowState={flowState} reloadToken={okfRevision} />
           </div>
         )}
 
@@ -324,6 +328,10 @@ export default function ProjectWorkspacePage({ params }: PageProps) {
         projectName={project?.name ?? "Project"}
         open={showHandoff}
         onClose={() => setShowHandoff(false)}
+      />
+      <OkfSyncDialog
+        projectId={id}
+        onConfirmed={() => setOkfRevision((revision) => revision + 1)}
       />
     </div>
   );

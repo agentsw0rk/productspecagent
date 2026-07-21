@@ -157,6 +157,92 @@ export interface WizardFeatureGraph {
   features: WizardFeature[];
   edges: WizardFeatureEdge[];
 }
+
+// ─── OKF Types ───────────────────────────────────────────────────────────────
+
+export type OkfMode = "LEGACY" | "MIGRATION_READY" | "OKF_ACTIVE";
+export type OkfSyncStatus = "CLEAN" | "INCOMING" | "PROPOSAL_PENDING" | "CONFLICT" | "INVALID_REMOTE" | "PUSH_FAILED";
+export type OkfConflictResolution = "REMOTE" | "PROPOSED";
+export type OkfIssueSeverity = "ERROR" | "WARNING";
+export type OkfChangesetKind = "EDIT" | "MIGRATION";
+export type OkfChangesetStatus = "PENDING" | "APPROVED";
+export type OkfOperationType = "ADD" | "UPDATE" | "RENAME" | "DELETE";
+
+export interface OkfGitConnection {
+  remoteUrl: string;
+  baseBranch: string;
+  canonicalBranch: string;
+}
+
+export interface OkfProjectState {
+  projectId: string;
+  mode: OkfMode;
+  syncStatus: OkfSyncStatus;
+  connection: OkfGitConnection | null;
+  baseCommit: string | null;
+  pendingChangesetId: string | null;
+  lastError: string | null;
+  updatedAt: string;
+}
+
+export interface OkfIssue {
+  severity: OkfIssueSeverity;
+  path: string;
+  field?: string | null;
+  message: string;
+}
+
+export interface OkfFileOperation {
+  type: OkfOperationType;
+  path: string;
+  previousPath?: string | null;
+  baseContent?: string | null;
+  content?: string | null;
+  documentId?: string | null;
+}
+
+export interface OkfChangeset {
+  id: string;
+  projectId: string;
+  kind: OkfChangesetKind;
+  status: OkfChangesetStatus;
+  baseCommit: string | null;
+  operations: OkfFileOperation[];
+  issues: OkfIssue[];
+  createdAt: string;
+  updatedAt: string;
+  approvedCommit?: string | null;
+}
+
+export interface OkfConflict {
+  changesetId: string;
+  documentId?: string | null;
+  path: string;
+  baseContent?: string | null;
+  remoteContent?: string | null;
+  proposedContent?: string | null;
+}
+
+export interface OkfMigrationDocument {
+  sourceId: string;
+  documentId: string;
+  path: string;
+  normalizations: string[];
+}
+
+export interface OkfMigrationPreview {
+  projectId: string;
+  baseCommit: string;
+  documents: OkfMigrationDocument[];
+  operations: OkfFileOperation[];
+  issues: OkfIssue[];
+}
+
+export interface OkfStatusResponse {
+  state: OkfProjectState;
+  pending: OkfChangeset | null;
+  conflicts: OkfConflict[];
+}
 export type ProjectStatus = "DRAFT" | "IN_PROGRESS" | "COMPLETED";
 
 export interface FlowStep {
@@ -1237,3 +1323,35 @@ export async function authLogout(): Promise<void> {
 export async function authMe(): Promise<AuthMe> {
   return apiFetch<AuthMe>("/api/v1/auth/me", { suppressUnauthorizedHandler: true });
 }
+
+// ─── OKF API ─────────────────────────────────────────────────────────────────
+
+export const getOkfStatus = (projectId: string) =>
+  apiFetch<OkfStatusResponse>(`/api/v1/projects/${projectId}/okf/status`);
+
+export const connectOkf = (projectId: string, remoteUrl: string, baseBranch: string) =>
+  apiFetch<OkfStatusResponse>(`/api/v1/projects/${projectId}/okf/connection`, {
+    method: "PUT",
+    body: JSON.stringify({ remoteUrl, baseBranch }),
+  });
+
+export const syncOkf = (projectId: string) =>
+  apiFetch<OkfStatusResponse>(`/api/v1/projects/${projectId}/okf/sync`, { method: "POST" });
+
+export const dryRunOkfMigration = (projectId: string) =>
+  apiFetch<OkfMigrationPreview>(`/api/v1/projects/${projectId}/okf/migration/dry-run`, { method: "POST" });
+
+export const prepareOkfMigration = (projectId: string) =>
+  apiFetch<OkfChangeset>(`/api/v1/projects/${projectId}/okf/migration/prepare`, { method: "POST" });
+
+export const approveOkfChangeset = (projectId: string, changesetId: string) =>
+  apiFetch<OkfChangeset>(`/api/v1/projects/${projectId}/okf/changesets/${changesetId}/approve`, { method: "POST" });
+
+export const resolveOkfConflict = (
+  projectId: string,
+  changesetId: string,
+  resolution: OkfConflictResolution,
+) => apiFetch<OkfChangeset | null>(`/api/v1/projects/${projectId}/okf/changesets/${changesetId}/resolve`, {
+  method: "POST",
+  body: JSON.stringify({ resolution }),
+});

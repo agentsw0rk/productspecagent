@@ -190,9 +190,13 @@ class GlobalExceptionHandler {
     fun handleOkfChangesetNotFound(ex: OkfChangesetNotFoundException): ErrorResponse =
         ErrorResponse("OKF_CHANGESET_NOT_FOUND", ex.message ?: "OKF changeset not found", Instant.now().toString())
 
+    @ExceptionHandler(OkfChangesetPendingException::class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    fun handleOkfChangesetPending(ex: OkfChangesetPendingException): ErrorResponse =
+        ErrorResponse("OKF_CHANGESET_PENDING", ex.message ?: "OKF changeset requires approval", Instant.now().toString())
+
     @ExceptionHandler(
         OkfPendingChangesException::class,
-        OkfChangesetPendingException::class,
         OkfChangesetConflictException::class,
         OkfGitRemoteAdvancedException::class,
         OkfStaleRemoteException::class,

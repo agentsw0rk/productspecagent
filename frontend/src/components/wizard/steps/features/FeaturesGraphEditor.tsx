@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useRete } from "rete-react-plugin";
-import { Plus, Sparkles, LayoutGrid } from "lucide-react";
+import { GitCompare, Plus, Sparkles, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   useWizardStore,
@@ -16,6 +16,7 @@ import { getAllowedScopesFromCatalog } from "@/lib/category-step-config";
 import { createFeaturesEditor, type FeaturesEditorContext } from "./editor";
 import { FeatureEditDialog } from "./FeatureEditDialog";
 import { FeaturesFallbackList } from "./FeaturesFallbackList";
+import { useOkfStore } from "@/lib/stores/okf-store";
 
 interface Props {
   projectId: string;
@@ -40,6 +41,9 @@ export function FeaturesGraphEditor({ projectId }: Props) {
   const applyProposal = useWizardStore((s) => s.applyProposal);
   const saveStep = useWizardStore((s) => s.saveStep);
   const catalog = useWizardOptionsStore((s) => s.catalog);
+  const okfStatus = useOkfStore((s) => s.projectId === projectId ? s.status : null);
+  const refreshOkf = useOkfStore((s) => s.refresh);
+  const setOkfDialogOpen = useOkfStore((s) => s.setDialogOpen);
 
   const allowedScopes = useMemo(
     () => getAllowedScopesFromCatalog(catalog, category),
@@ -113,6 +117,31 @@ export function FeaturesGraphEditor({ projectId }: Props) {
     const e = edges.map((x) => `${x.id}:${x.from}>${x.to}`).join("|");
     return `${f}##${e}`;
   }, [features, edges]);
+
+  const semanticFingerprint = useMemo(() => JSON.stringify({
+    features: [...features]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((feature) => ({
+        id: feature.id,
+        title: feature.title,
+        description: feature.description,
+        scopes: [...feature.scopes].sort(),
+        scopeFields: Object.fromEntries(Object.entries(feature.scopeFields ?? {}).sort(([a], [b]) => a.localeCompare(b))),
+        acceptanceCriteria: Array.isArray(feature.acceptanceCriteria)
+          ? feature.acceptanceCriteria.map((criterion) => ({ id: criterion.id, text: criterion.text }))
+          : [],
+      })),
+    edges: [...edges]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(({ id, from, to }) => ({ id, from, to })),
+  }), [features, edges]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void refreshOkf(projectId);
+    }, 800);
+    return () => window.clearTimeout(timeout);
+  }, [projectId, refreshOkf, semanticFingerprint]);
 
   useEffect(() => {
     if (!ctxRef.current) return;
@@ -193,6 +222,15 @@ export function FeaturesGraphEditor({ projectId }: Props) {
             >
               <LayoutGrid size={14} /> {isSavingLayout ? "Speichere..." : "Auto-Layout"}
             </Button>
+            {okfStatus?.state.syncStatus === "PROPOSAL_PENDING" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOkfDialogOpen(true)}
+              >
+                <GitCompare size={14} /> Aenderungen pruefen
+              </Button>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             Berücksichtigt Markdown- und Text-Dateien aus dem Documents-Tab.

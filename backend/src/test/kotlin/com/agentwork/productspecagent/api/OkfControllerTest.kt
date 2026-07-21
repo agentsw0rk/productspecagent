@@ -18,6 +18,7 @@ import com.agentwork.productspecagent.service.okf.OkfMigrationService
 import com.agentwork.productspecagent.service.okf.OkfPendingChangesException
 import com.agentwork.productspecagent.service.okf.OkfStaleRemoteException
 import com.agentwork.productspecagent.service.okf.OkfSyncService
+import com.agentwork.productspecagent.service.OkfChangesetPendingException
 import com.agentwork.productspecagent.storage.OkfStateStorage
 import com.agentwork.productspecagent.storage.ProjectStorage
 import org.junit.jupiter.api.BeforeEach
@@ -198,6 +199,16 @@ class OkfControllerTest {
         mockMvc.perform(post("/api/v1/projects/$PROJECT_ID/okf/changesets/$CHANGESET_ID/approve"))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.error").value("OKF_CONFLICT"))
+    }
+
+    @Test
+    fun `pending feature approval has a dedicated error code`() {
+        whenever(migrationService.dryRun(PROJECT_ID))
+            .thenThrow(OkfChangesetPendingException(PROJECT_ID))
+
+        mockMvc.perform(post("/api/v1/projects/$PROJECT_ID/okf/migration/dry-run"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("OKF_CHANGESET_PENDING"))
     }
 
     @Test

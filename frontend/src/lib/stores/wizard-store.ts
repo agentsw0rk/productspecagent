@@ -7,12 +7,13 @@ import type {
   WizardProgressionView,
   StepType,
 } from "@/lib/api";
-import { getWizardData, getWizardProgression, saveWizardStep, completeWizardStep } from "@/lib/api";
+import { ApiError, getWizardData, getWizardProgression, saveWizardStep, completeWizardStep } from "@/lib/api";
 import { wouldCreateCycle } from "@/lib/graph/cycleCheck";
 import { formatStepFields } from "@/lib/step-field-labels";
 import { useProjectStore } from "@/lib/stores/project-store";
 import { getVisibleStepsFromCatalog } from "@/lib/category-step-config";
 import { useWizardOptionsStore } from "@/lib/stores/wizard-options-store";
+import { useOkfStore } from "@/lib/stores/okf-store";
 
 export const WIZARD_STEPS = [
   { key: "IDEA", label: "Idee" },
@@ -166,6 +167,9 @@ export const useWizardStore = create<WizardState>((set, get) => ({
               if (requestGeneration === storeGeneration && requestRevision === editRevision) {
                 set({ data: result });
               }
+              if (step === "FEATURES") {
+                void useOkfStore.getState().refresh(state.data!.projectId);
+              }
             })
             .catch(() => undefined)
             .finally(() => {
@@ -194,6 +198,9 @@ export const useWizardStore = create<WizardState>((set, get) => ({
       const result = await saveWizardStep(projectId, step, stepData);
       if (requestGeneration === storeGeneration && requestRevision === editRevision) {
         set({ data: result });
+      }
+      if (step === "FEATURES") {
+        await useOkfStore.getState().refresh(projectId);
       }
       return true;
     } catch {
@@ -485,6 +492,16 @@ export const useWizardStore = create<WizardState>((set, get) => ({
 
       return { exportTriggered };
     } catch (err) {
+      if (
+        err instanceof ApiError
+        && (err.body as { error?: string } | null)?.error === "OKF_CHANGESET_PENDING"
+      ) {
+        await useOkfStore.getState().refresh(projectId);
+        useOkfStore.getState().setDialogOpen(true);
+        useProjectStore.setState({ chatSending: false });
+        set({ activeStep: "FEATURES", chatPending: false });
+        return null;
+      }
       const errMsg = {
         id: `wizard-err-${Date.now()}`,
         role: "system" as const,
