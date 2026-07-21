@@ -1,6 +1,7 @@
 package com.agentwork.productspecagent.service
 
 import com.agentwork.productspecagent.domain.*
+import com.agentwork.productspecagent.service.okf.OkfProjectLocks
 import com.agentwork.productspecagent.storage.ProjectStorage
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -12,27 +13,28 @@ import org.springframework.stereotype.Service
 @Service
 class WizardService(private val storage: ProjectStorage) {
 
-    fun getWizardData(projectId: String): WizardData {
+    fun getWizardData(projectId: String): WizardData = OkfProjectLocks.withLock(projectId) {
         storage.loadProject(projectId) ?: throw ProjectNotFoundException(projectId)
-        return normalizeWizardData(storage.loadWizardData(projectId) ?: WizardData(projectId = projectId))
+        normalizeWizardData(storage.loadWizardData(projectId) ?: WizardData(projectId = projectId))
     }
 
-    fun saveWizardData(projectId: String, data: WizardData): WizardData {
+    fun saveWizardData(projectId: String, data: WizardData): WizardData = OkfProjectLocks.withLock(projectId) {
         storage.loadProject(projectId) ?: throw ProjectNotFoundException(projectId)
         val saved = normalizeWizardData(data.copy(projectId = projectId))
         storage.saveWizardData(projectId, saved)
-        return saved
+        saved
     }
 
-    fun saveStepData(projectId: String, stepName: String, stepData: WizardStepData): WizardData {
-        storage.loadProject(projectId) ?: throw ProjectNotFoundException(projectId)
-        val existing = storage.loadWizardData(projectId) ?: WizardData(projectId = projectId)
-        val updated = normalizeWizardData(
-            existing.copy(steps = existing.steps + (stepName to normalizeStepData(stepName, stepData)))
-        )
-        storage.saveWizardData(projectId, updated)
-        return updated
-    }
+    fun saveStepData(projectId: String, stepName: String, stepData: WizardStepData): WizardData =
+        OkfProjectLocks.withLock(projectId) {
+            storage.loadProject(projectId) ?: throw ProjectNotFoundException(projectId)
+            val existing = storage.loadWizardData(projectId) ?: WizardData(projectId = projectId)
+            val updated = normalizeWizardData(
+                existing.copy(steps = existing.steps + (stepName to normalizeStepData(stepName, stepData)))
+            )
+            storage.saveWizardData(projectId, updated)
+            updated
+        }
 
     private fun normalizeWizardData(data: WizardData): WizardData =
         data.copy(steps = data.steps.mapValues { (stepName, stepData) -> normalizeStepData(stepName, stepData) })

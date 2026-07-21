@@ -12,9 +12,6 @@ import com.agentwork.productspecagent.domain.okf.OkfProjectState
 import com.agentwork.productspecagent.domain.okf.OkfSyncStatus
 import com.agentwork.productspecagent.storage.OkfStateStorage
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 import kotlinx.serialization.Serializable
 import org.springframework.stereotype.Service
 
@@ -40,8 +37,6 @@ class OkfSyncService(
     private val planner: OkfThreeWayPlanner,
     private val parser: OkfParser,
 ) {
-
-    private val projectLocks = ConcurrentHashMap<String, ReentrantLock>()
 
     fun status(projectId: String): OkfProjectState = stateStorage.loadState(projectId)
 
@@ -615,7 +610,7 @@ class OkfSyncService(
     }
 
     private fun <T> locked(projectId: String, block: () -> T): T =
-        projectLocks.computeIfAbsent(projectId) { ReentrantLock() }.withLock(block)
+        OkfProjectLocks.withLock(projectId, block)
 
     private fun now(): String = Instant.now().toString()
 
