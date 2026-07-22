@@ -21,7 +21,10 @@ class WizardService(
     @Lazy private val okfFeatures: OkfFeatureService? = null,
 ) {
 
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     fun getWizardData(projectId: String): WizardData = OkfProjectLocks.withLock(projectId) {
         storage.loadProject(projectId) ?: throw ProjectNotFoundException(projectId)

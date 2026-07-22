@@ -228,7 +228,13 @@ class WizardServiceTest {
         assertEquals("updated note", (persisted.steps["FEATURES"]!!.fields["note"] as JsonPrimitive).content)
         assertEquals("2026-07-20T12:00:00Z", persisted.steps["FEATURES"]!!.completedAt)
         assertTrue(stateStorage.loadPendingChangeset("active-project") != null)
-        assertEquals("Sign in", featureTitle(WizardService(projectStorage, okf).getWizardData("active-project")))
+        val projected = WizardService(projectStorage, okf).getWizardData("active-project")
+        assertEquals("Sign in", featureTitle(projected))
+        val projectedFeature = (projected.steps["FEATURES"]!!.fields["features"] as JsonArray).single() as JsonObject
+        assertEquals(
+            JsonObject(mapOf("x" to JsonPrimitive(0.0), "y" to JsonPrimitive(0.0))),
+            projectedFeature["position"],
+        )
 
         activeService.saveWizardData(
             "active-project",

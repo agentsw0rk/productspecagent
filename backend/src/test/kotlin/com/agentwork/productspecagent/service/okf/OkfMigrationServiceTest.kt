@@ -2,6 +2,7 @@ package com.agentwork.productspecagent.service.okf
 
 import com.agentwork.productspecagent.domain.Project
 import com.agentwork.productspecagent.domain.ProjectStatus
+import com.agentwork.productspecagent.domain.GraphPosition
 import com.agentwork.productspecagent.domain.WizardData
 import com.agentwork.productspecagent.domain.WizardStepData
 import com.agentwork.productspecagent.domain.okf.OkfBundle
@@ -11,6 +12,7 @@ import com.agentwork.productspecagent.domain.okf.OkfIssueSeverity
 import com.agentwork.productspecagent.domain.okf.OkfMode
 import com.agentwork.productspecagent.service.WizardService
 import com.agentwork.productspecagent.storage.InMemoryObjectStore
+import com.agentwork.productspecagent.storage.OkfPresentationStorage
 import com.agentwork.productspecagent.storage.OkfStateStorage
 import com.agentwork.productspecagent.storage.ProjectStorage
 import java.nio.charset.StandardCharsets
@@ -172,6 +174,19 @@ class OkfMigrationServiceTest {
         val state = fixture.stateStorage.loadState(PROJECT_ID)
         assertEquals(OkfMode.MIGRATION_READY, state.mode)
         assertEquals(prepared.id, state.pendingChangesetId)
+        assertEquals(
+            GraphPosition(120.0, 80.0),
+            fixture.presentationStorage.loadPositions(PROJECT_ID)[migratedUuid("feature", "feature-a")],
+        )
+
+        fixture.seed(
+            JsonArray(listOf(feature("feature-a", "Changed login", "Users can sign in.", x = 999.0))),
+        )
+        assertThrows(OkfPendingChangesException::class.java) { fixture.service.prepare(PROJECT_ID) }
+        assertEquals(
+            GraphPosition(120.0, 80.0),
+            fixture.presentationStorage.loadPositions(PROJECT_ID)[migratedUuid("feature", "feature-a")],
+        )
     }
 
     @Test
@@ -201,6 +216,7 @@ class OkfMigrationServiceTest {
         )
         val wizardService = WizardService(projectStorage)
         val stateStorage = OkfStateStorage(objectStore)
+        val presentationStorage = OkfPresentationStorage(objectStore)
         stateStorage.saveState(
             com.agentwork.productspecagent.domain.okf.OkfProjectState(
                 projectId = PROJECT_ID,
@@ -219,19 +235,21 @@ class OkfMigrationServiceTest {
             wizardService,
             git,
             stateStorage,
+            presentationStorage,
             projectStorage,
             codec,
             parser,
             OkfProfileValidator(),
             Clock.fixed(Instant.parse("2026-07-20T12:00:00Z"), ZoneOffset.UTC),
         )
-        return Fixture(projectStorage, git, stateStorage, parser, codec, service)
+        return Fixture(projectStorage, git, stateStorage, presentationStorage, parser, codec, service)
     }
 
     private fun Fixture.newService(now: Instant): OkfMigrationService = OkfMigrationService(
         WizardService(projectStorage),
         git,
         stateStorage,
+        presentationStorage,
         projectStorage,
         codec,
         parser,
@@ -258,12 +276,16 @@ class OkfMigrationServiceTest {
         title: String,
         description: String,
         acceptanceCriteria: kotlinx.serialization.json.JsonElement = JsonArray(emptyList()),
+        x: Double = 120.0,
     ) = JsonObject(
         mapOf(
             "id" to JsonPrimitive(id),
             "title" to JsonPrimitive(title),
             "description" to JsonPrimitive(description),
             "acceptanceCriteria" to acceptanceCriteria,
+            "position" to JsonObject(
+                mapOf("x" to JsonPrimitive(x), "y" to JsonPrimitive(80.0)),
+            ),
         ),
     )
 
@@ -284,6 +306,7 @@ class OkfMigrationServiceTest {
         val projectStorage: ProjectStorage,
         val git: OkfGitClient,
         val stateStorage: OkfStateStorage,
+        val presentationStorage: OkfPresentationStorage,
         val parser: OkfParser,
         val codec: OkfFeatureCodec,
         val service: OkfMigrationService,

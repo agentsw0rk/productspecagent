@@ -16,6 +16,7 @@ import com.agentwork.productspecagent.domain.okf.OkfMode
 import com.agentwork.productspecagent.domain.okf.OkfOperationType
 import com.agentwork.productspecagent.domain.okf.OkfSyncStatus
 import com.agentwork.productspecagent.service.WizardService
+import com.agentwork.productspecagent.storage.OkfPresentationStorage
 import com.agentwork.productspecagent.storage.OkfStateStorage
 import com.agentwork.productspecagent.storage.ProjectStorage
 import java.nio.charset.StandardCharsets
@@ -37,6 +38,7 @@ class OkfMigrationService(
     private val wizardService: WizardService,
     private val gitClient: OkfGitClient,
     private val stateStorage: OkfStateStorage,
+    private val presentationStorage: OkfPresentationStorage,
     private val projectStorage: ProjectStorage,
     private val featureCodec: OkfFeatureCodec,
     private val parser: OkfParser,
@@ -99,6 +101,7 @@ class OkfMigrationService(
                 existing.operations == preview.operations &&
                 existing.issues == preview.issues
             ) {
+                saveMigratedPositions(projectId)
                 stateStorage.saveState(
                     state.copy(
                         mode = OkfMode.MIGRATION_READY,
@@ -114,6 +117,7 @@ class OkfMigrationService(
             throw OkfPendingChangesException(projectId)
         }
 
+        saveMigratedPositions(projectId)
         val timestamp = clock.instant().toString()
         val changeset = OkfChangeset(
             id = migrationChangesetId(projectId, preview),
@@ -137,6 +141,20 @@ class OkfMigrationService(
             ),
         )
         changeset
+    }
+
+    private fun saveMigratedPositions(projectId: String) {
+        val issues = mutableListOf<OkfIssue>()
+        val source = readFeatureGraph(wizardService.getWizardData(projectId), issues)
+        val migrated = migrateGraph(projectId, source, issues)
+        val errors = issues.filter { it.severity == OkfIssueSeverity.ERROR }
+        if (errors.isNotEmpty()) {
+            throw OkfMigrationException(errors.joinToString("; ") { it.message })
+        }
+        presentationStorage.savePositions(
+            projectId,
+            migrated.graph.features.associate { feature -> feature.id to feature.position },
+        )
     }
 
     private fun readFeatureGraph(wizardData: WizardData, issues: MutableList<OkfIssue>): WizardFeatureGraph {
