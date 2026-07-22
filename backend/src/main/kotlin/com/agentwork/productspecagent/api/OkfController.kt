@@ -8,6 +8,7 @@ import com.agentwork.productspecagent.domain.okf.OkfMigrationPreview
 import com.agentwork.productspecagent.domain.okf.OkfStatusResponse
 import com.agentwork.productspecagent.domain.okf.OkfSyncStatus
 import com.agentwork.productspecagent.domain.okf.ResolveOkfConflictRequest
+import com.agentwork.productspecagent.config.OkfGitProperties
 import com.agentwork.productspecagent.service.okf.OkfInvalidRemoteBundleException
 import com.agentwork.productspecagent.service.okf.OkfMigrationService
 import com.agentwork.productspecagent.service.okf.OkfPendingChangesException
@@ -35,6 +36,7 @@ class OkfController(
     private val migrationService: OkfMigrationService,
     private val stateStorage: OkfStateStorage,
     private val projectStorage: ProjectStorage,
+    private val gitProperties: OkfGitProperties,
 ) {
 
     @PutMapping("/connection")
@@ -133,10 +135,10 @@ class OkfController(
             !uri.isOpaque && uri.rawQuery == null && uri.rawFragment == null,
             "Git remote URL must not contain opaque, query, or fragment components",
         )
-        validate(
-            uri.scheme?.lowercase() == "https" && !uri.host.isNullOrBlank(),
-            "Git remote URL must use HTTPS and contain a host",
-        )
+        val scheme = uri.scheme?.lowercase()
+        val validHttps = scheme == "https" && !uri.host.isNullOrBlank()
+        val validFile = scheme == "file" && gitProperties.allowFileRemotes && !uri.path.isNullOrBlank()
+        validate(validHttps || validFile, "Git remote URL must use HTTPS")
         validate(Repository.isValidRefName("refs/heads/${request.baseBranch}"), "invalid base branch")
         return OkfGitConnection(remoteUrl = request.remoteUrl, baseBranch = request.baseBranch)
     }

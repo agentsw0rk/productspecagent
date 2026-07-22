@@ -43,7 +43,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
-@SpringBootTest
+@SpringBootTest(properties = ["okf.git.allow-file-remotes=true"])
 @AutoConfigureMockMvc
 @WithMockUser
 class OkfControllerTest {
@@ -94,6 +94,27 @@ class OkfControllerTest {
             .andExpect(jsonPath("$.error").value("OKF_VALIDATION_ERROR"))
 
         verify(stateStorage, never()).saveState(any())
+    }
+
+    @Test
+    fun `file remote is accepted only in the configured test mode`() {
+        whenever(stateStorage.loadState(PROJECT_ID)).thenReturn(STATE)
+        whenever(stateStorage.loadPendingChangeset(PROJECT_ID)).thenReturn(null)
+        whenever(syncService.status(PROJECT_ID)).thenReturn(
+            STATE.copy(connection = CONNECTION.copy(remoteUrl = "file:///tmp/okf.git")),
+        )
+        whenever(syncService.pending(PROJECT_ID)).thenReturn(null)
+        whenever(stateStorage.loadConflicts(PROJECT_ID)).thenReturn(emptyList())
+
+        mockMvc.perform(
+            put("/api/v1/projects/$PROJECT_ID/okf/connection")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"remoteUrl":"file:///tmp/okf.git","baseBranch":"main"}"""),
+        ).andExpect(status().isOk())
+
+        verify(stateStorage).saveState(argThat {
+            connection?.remoteUrl == "file:///tmp/okf.git"
+        })
     }
 
     @Test
