@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { seedSaaSProjectToFeatures } from "./fixtures/seed-project";
+import { createOkfRemote, readFeatureDocument } from "./fixtures/okf-git-fixture";
 
 async function login(page: Parameters<typeof test>[0]["page"], email: string, password: string) {
   await page.goto("/login");
@@ -15,13 +16,10 @@ async function openFeaturesStep(page: Page) {
   await expect(page.getByRole("heading").first()).toBeVisible();
   await page.waitForLoadState("networkidle");
 
-  const labeledStep = page.getByRole("button", { name: /^features$/i });
-  if (await labeledStep.isVisible().catch(() => false)) {
-    await labeledStep.click();
-  } else {
+  await expect(async () => {
     await page.locator('button[title="Features"]').click();
-  }
-  await expect(page.getByRole("heading", { name: /^Features$/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Features$/ })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 10_000 });
 }
 
 test.describe("Feature 22 — Features graph editor", () => {
@@ -137,15 +135,92 @@ test.describe("Feature 22 — Features graph editor", () => {
     expect(pageErrors).toEqual([]);
   });
 
+  test("opens an OKF-active feature whose criterion is stored as a Markdown task", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(60_000);
+    const remote = createOkfRemote();
+    try {
+      const { projectId, email, password, token } = await seedSaaSProjectToFeatures(request);
+      const headers = { Authorization: `Bearer ${token}` };
+      const api = process.env.TEST_API_URL ?? "http://localhost:8080";
+      const criterionText = "The active feature can be selected without an error";
+      const seedResponse = await request.put(`${api}/api/v1/projects/${projectId}/wizard/FEATURES`, {
+        headers,
+        data: {
+          fields: {
+            features: [
+              {
+                id: "44444444-4444-4444-8444-444444444444",
+                title: "Active criterion feature",
+                scopes: ["FRONTEND"],
+                description: "An OKF-backed feature.",
+                scopeFields: {},
+                acceptanceCriteria: [
+                  { id: "55555555-5555-4555-8555-555555555555", text: criterionText },
+                ],
+                position: { x: 80, y: 120 },
+              },
+            ],
+            edges: [],
+          },
+          completedAt: new Date().toISOString(),
+        },
+      });
+      expect(seedResponse.ok()).toBeTruthy();
+
+      const connection = await request.put(`${api}/api/v1/projects/${projectId}/okf/connection`, {
+        headers,
+        data: { remoteUrl: remote.remoteUrl, baseBranch: "main" },
+      });
+      expect(connection.ok(), await connection.text()).toBeTruthy();
+      const dryRun = await request.post(`${api}/api/v1/projects/${projectId}/okf/migration/dry-run`, { headers });
+      expect(dryRun.ok(), await dryRun.text()).toBeTruthy();
+      const prepared = await request.post(`${api}/api/v1/projects/${projectId}/okf/migration/prepare`, { headers });
+      expect(prepared.ok(), await prepared.text()).toBeTruthy();
+      const changeset = await prepared.json() as { id: string };
+      const approved = await request.post(
+        `${api}/api/v1/projects/${projectId}/okf/changesets/${changeset.id}/approve`,
+        { headers },
+      );
+      expect(approved.ok(), await approved.text()).toBeTruthy();
+
+      const external = remote.cloneCanonical();
+      expect(readFeatureDocument(external, "Active criterion feature")).toContain(
+        `- [ ] ${criterionText} <!-- okf:id=55555555-5555-4555-8555-555555555555 -->`,
+      );
+
+      const pageErrors: string[] = [];
+      page.on("pageerror", (error) => pageErrors.push(error.message));
+      await login(page, email, password);
+      await page.goto(`/projects/${projectId}`);
+      await openFeaturesStep(page);
+      const activeFeature = page.locator('[data-testid="node"]').filter({ hasText: "Active criterion feature" });
+      await expect(activeFeature).toBeVisible();
+      await page.waitForTimeout(250);
+      await activeFeature.dblclick();
+
+      await expect(page.getByRole("dialog", { name: /Feature bearbeiten/i })).toBeVisible();
+      await expect(page.getByText("1 AC", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Akzeptanzkriterien ausklappen" }).click();
+      await expect(page.getByLabel("Akzeptanzkriterium 1")).toHaveValue(criterionText);
+      expect(pageErrors).toEqual([]);
+    } finally {
+      remote.cleanup();
+    }
+  });
+
   test("auto-layout persists updated feature coordinates immediately", async ({
     page,
     request,
   }) => {
-    const { projectId, email, password } = await seedSaaSProjectToFeatures(request);
+    const { projectId, email, password, token } = await seedSaaSProjectToFeatures(request);
 
     const seedResponse = await request.put(
       `${process.env.TEST_API_URL ?? "http://localhost:8080"}/api/v1/projects/${projectId}/wizard/FEATURES`,
       {
+        headers: { Authorization: `Bearer ${token}` },
         data: {
           fields: {
             features: [
@@ -196,6 +271,7 @@ test.describe("Feature 22 — Features graph editor", () => {
 
     const wizardResponse = await request.get(
       `${process.env.TEST_API_URL ?? "http://localhost:8080"}/api/v1/projects/${projectId}/wizard`,
+      { headers: { Authorization: `Bearer ${token}` } },
     );
     expect(wizardResponse.ok()).toBeTruthy();
     const wizard = await wizardResponse.json();
@@ -214,11 +290,12 @@ test.describe("Feature 22 — Features graph editor", () => {
     page,
     request,
   }) => {
-    const { projectId, email, password } = await seedSaaSProjectToFeatures(request);
+    const { projectId, email, password, token } = await seedSaaSProjectToFeatures(request);
 
     const seedResponse = await request.put(
       `${process.env.TEST_API_URL ?? "http://localhost:8080"}/api/v1/projects/${projectId}/wizard/FEATURES`,
       {
+        headers: { Authorization: `Bearer ${token}` },
         data: {
           fields: {
             features: [
@@ -276,6 +353,7 @@ test.describe("Feature 22 — Features graph editor", () => {
     await expect.poll(async () => {
       const wizardResponse = await request.get(
         `${process.env.TEST_API_URL ?? "http://localhost:8080"}/api/v1/projects/${projectId}/wizard`,
+        { headers: { Authorization: `Bearer ${token}` } },
       );
       expect(wizardResponse.ok()).toBeTruthy();
       const wizard = await wizardResponse.json();
