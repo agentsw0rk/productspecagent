@@ -432,3 +432,8 @@ ausserhalb des Scopes.
   und Architekturtexte nicht verlaesslich genug.
 - **Big-Bang-Migration aller Dokumente:** Vergroessert Risiko und Umfang ohne
   Nutzen fuer den ersten vertikalen Schnitt.
+
+## Implementation Status
+
+- Slice 1 complete: OKF Core, feature profile, Git sync, migration, Explorer/export, and Rete projection.
+- Remaining: Decisions, Architecture, agent write tools, and final legacy cleanup.
